@@ -95,10 +95,11 @@ Defaults:
 ```text
 poll=1000
 zoom=3
-width=350
+width=320
 ```
 
 If `width=` is present in the URL, it overrides the automatic width.
+Extra width is given to the runner name/split column. The delta and current-time columns stay compact and close together.
 
 ## Race Ordering
 
@@ -121,6 +122,7 @@ After anyone finishes:
 - `Finished (confirmed)` and `Finished (waiting for confirmation)` replace split text once a runner finishes.
 - `Abandoned (...)` replaces split text once a runner abandons.
 - Positive race deltas use red; negative race deltas use green.
+- Race deltas use the same font size as the current time and sit close to the current time.
 - Long runner names are clipped so the ELO rating and rating delta stay visible.
 
 ## Data And Privacy

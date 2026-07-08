@@ -9,4 +9,5 @@
 - Added abandoned-run display and bottom-of-leaderboard ordering.
 - Collapsed nested split rows into parent main splits for comparison.
 - Added high-resolution default rendering for sharper OBS scaling.
+- Tightened the delta/current-time timing column for a more compact default overlay width.
 - Added MIT license and third-party notices.
