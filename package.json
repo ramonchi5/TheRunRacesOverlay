@@ -1,0 +1,9 @@
+{
+  "name": "therun-obs-overlay",
+  "version": "1.0.0-rc.1",
+  "private": true,
+  "description": "Small OBS Browser Source overlay for therun.gg race standings.",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
