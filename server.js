@@ -7,6 +7,7 @@ const { URL } = require("node:url");
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
 const STATE_FILE = path.join(ROOT, ".overlay-state.json");
+const APP_VERSION = "1.0.0";
 const DEFAULT_PORT = 5179;
 const CACHE_TTL_MS = 750;
 const MAX_RESPONSE_BYTES = 6 * 1024 * 1024;
@@ -132,7 +133,7 @@ function fetchText(url, redirectsLeft = 4) {
         headers: {
           Accept: "text/html,application/xhtml+xml",
           "Cache-Control": "no-cache",
-          "User-Agent": "therun-obs-overlay/1.0 (+local OBS browser source)",
+          "User-Agent": `therun-obs-overlay/${APP_VERSION} (+local OBS browser source)`,
         },
         timeout: 15000,
       },
@@ -187,12 +188,13 @@ async function getRaceData(raceId) {
 
 function parseRaceHtml(html, raceId, sourceUrl) {
   const embeddedRace = parseEmbeddedRace(html);
-  const standings = parseStandings(html);
-  const cards = parseParticipantCards(html);
-  const splitRows = parseSplitRows(html);
-  const profilesByRunner = buildProfilesByRunner(splitRows);
   const metadata = parseMetadata(html);
   const embeddedRunners = parseEmbeddedParticipants(embeddedRace);
+  const standings = parseStandings(html);
+  const cards = parseParticipantCards(html);
+  const profilesByRunner = needsChatProfileFallback(embeddedRunners)
+    ? buildProfilesByRunner(parseSplitRows(html))
+    : new Map();
 
   const runnersByName = new Map();
   const addRunner = (runner) => {
@@ -267,6 +269,10 @@ function parseRaceHtml(html, raceId, sourceUrl) {
     fetchedAt: new Date().toISOString(),
     runners: rankedRunners,
   };
+}
+
+function needsChatProfileFallback(runners) {
+  return !runners.length || runners.some((runner) => !runner.splitProfileMainOnly?.units?.length);
 }
 
 function parseMetadata(html) {
@@ -1099,7 +1105,7 @@ const server = http.createServer(async (req, res) => {
     const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
     if (requestUrl.pathname === "/health") {
-      sendJson(res, 200, { ok: true });
+      sendJson(res, 200, { ok: true, version: APP_VERSION });
       return;
     }
 

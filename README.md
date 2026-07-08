@@ -2,21 +2,23 @@
 
 Compact OBS Browser Source overlay for live races on [therun.gg](https://therun.gg).
 
-The app runs locally, reads a public TheRun race URL, and renders a small timing-tower style leaderboard with runner names, ratings, current times, latest split progress, and race deltas.
+The app runs locally, reads a public TheRun race URL, and renders a small timing-tower style leaderboard with runner names, ratings, current times, race deltas, and finish/abandon status.
 
 ## Status
 
-This is a first working release candidate. It is ready for live-race testing before tagging `v1.0.0`.
+Version `1.0.0` is ready for release tagging after final live-race validation.
 
 ## Features
 
-- Local OBS Browser Source overlay.
+- Local OBS Browser Source overlay; no OBS plugin install required.
 - Control page for pasting each new TheRun race URL without changing the OBS source.
-- Runner ranking, current race time, latest split time, and completion percent.
-- Race delta comparison with the fastest finished runner as the baseline once anyone finishes.
-- Main split comparison by parent split group.
+- Runner names, ELO rating changes, current times, split progress, and race deltas.
 - High-resolution default rendering with `zoom=3` for sharper OBS scaling.
 - Transparent page background with a semi-transparent leaderboard panel.
+- Main split comparison that collapses nested split rows into their parent split group.
+- Finished runners ordered by final time, with the fastest finisher as the baseline.
+- Live runners compared only against matching completed split positions.
+- Abandoned runners placed at the bottom; the earliest abandoner is last.
 
 ## Requirements
 
@@ -64,7 +66,7 @@ The OBS source keeps the same overlay URL and updates on its next poll.
 
 ## OBS Setup
 
-Add an OBS Browser Source.
+Add an OBS Browser Source:
 
 ```text
 URL:    http://localhost:5179/overlay
@@ -88,34 +90,47 @@ Use more height for larger races. After setting the Browser Source size, resize 
 ?theme=light                       use the light panel theme
 ```
 
-By default:
+Defaults:
 
 ```text
+poll=1000
 zoom=3
 width=350
 ```
 
-If `width=` is present in the URL, it always overrides the automatic width.
-
-Nested split rows are collapsed into their parent main split group for display and comparison.
+If `width=` is present in the URL, it overrides the automatic width.
 
 ## Race Ordering
 
-Before anyone finishes, runners are ordered by the latest comparable completed split.
+Before anyone finishes:
+
+- Runners with comparable main split counts are ordered by their latest comparable completed main split.
+- Race deltas compare the same completed main split position only.
+- The overlay does not compare against another runner's current timer as a split delta fallback.
 
 After anyone finishes:
 
 - The fastest finished runner becomes the baseline and #1.
-- Other finished runners are ordered by final time.
-- Runners still racing are ordered after finished runners by their delta against the fastest finished runner at their latest completed comparable split.
-- Runners with incompatible split structures stay below the comparable leaderboard with no race delta.
+- Other finished runners are ordered by final time and keep deltas against the fastest finisher.
+- Runners still racing are ordered after finished runners by their latest comparable split delta against the fastest finisher.
+- Abandoned runners are ordered at the bottom. If multiple runners abandon, the later abandoner ranks above the earlier abandoner, so the first to abandon is last.
+- Runners with incompatible split structures remain below the comparable leaderboard with no race delta.
+
+## Display Rules
+
+- `Finished (confirmed)` and `Finished (waiting for confirmation)` replace split text once a runner finishes.
+- `Abandoned (...)` replaces split text once a runner abandons.
+- Positive race deltas use red; negative race deltas use green.
+- Long runner names are clipped so the ELO rating and rating delta stay visible.
+
+## Data And Privacy
+
+This tool only makes public `GET` requests to therun.gg race pages. It does not submit race actions, modify races, or require user credentials.
+
+The app prefers TheRun's embedded public race payload when available and falls back to visible page sections when needed.
 
 ## Attribution And Licensing
 
 This project is released under the MIT License. See [LICENSE](LICENSE).
 
 See [NOTICE.md](NOTICE.md) for third-party notices.
-
-## Notes
-
-This tool only makes public `GET` requests to therun.gg race pages. It does not submit race actions, modify races, or require user credentials.
