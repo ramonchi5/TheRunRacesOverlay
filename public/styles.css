@@ -24,7 +24,7 @@ body {
 
 .app {
   width: calc(100vw / var(--render-zoom));
-  min-width: 320px;
+  min-width: 0;
   padding: 8px;
   transform: scale(var(--render-zoom));
   transform-origin: top left;
@@ -155,7 +155,7 @@ body {
 .runnerStats {
   display: grid;
   grid-template-columns: max-content max-content;
-  column-gap: 5px;
+  column-gap: 10px;
   row-gap: 1px;
   justify-content: end;
   justify-items: end;

@@ -8,7 +8,7 @@ const theme = params.get("theme") === "light" ? "light" : "dark";
 const panelMode = params.get("panel") === "1" || params.get("background") === "panel";
 const defaultOverlayWidth = 320;
 const widthParam = params.get("width");
-const overlayWidth = widthParam ? clamp(Number(widthParam), 320, 2400) : defaultOverlayWidth;
+const overlayWidth = widthParam ? clamp(Number(widthParam), 120, 2400) : defaultOverlayWidth;
 const renderZoom = clamp(Number(params.get("zoom")) || Number(params.get("scale")) || 3, 1, 4);
 const isControlPage = window.location.pathname === "/control" || window.location.pathname === "/";
 

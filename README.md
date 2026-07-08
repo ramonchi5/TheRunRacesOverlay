@@ -84,7 +84,7 @@ Use more height for larger races. After setting the Browser Source size, resize 
 ?poll=1000                         refresh every 1 second
 ?title=off                         hide the header
 ?limit=4                           show only the top 4 runners
-?width=390                         override the automatic overlay width
+?width=220                         override the automatic overlay width
 ?zoom=2                            override the default render zoom
 ?panel=1                           use the old framed panel style
 ?theme=light                       use the light panel theme
@@ -99,7 +99,8 @@ width=320
 ```
 
 If `width=` is present in the URL, it overrides the automatic width.
-Extra width is given to the runner name/split column. The delta and current-time columns stay compact and close together.
+
+Width overrides accept values from `120` to `2400`. Extra width is given to the runner name/split column. The delta and current-time columns stay compact with a fixed small gap.
 
 ## Race Ordering
 
@@ -122,7 +123,7 @@ After anyone finishes:
 - `Finished (confirmed)` and `Finished (waiting for confirmation)` replace split text once a runner finishes.
 - `Abandoned (...)` replaces split text once a runner abandons.
 - Positive race deltas use red; negative race deltas use green.
-- Race deltas use the same font size as the current time and sit close to the current time.
+- Race deltas use the same font size as the current time and sit close to the current time with a fixed gap.
 - Long runner names are clipped so the ELO rating and rating delta stay visible.
 
 ## Data And Privacy
