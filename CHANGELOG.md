@@ -10,5 +10,6 @@
 - Collapsed nested split rows into parent main splits for comparison.
 - Added high-resolution default rendering for sharper OBS scaling.
 - Tightened the delta/current-time timing column for a more compact default overlay width and narrower width overrides.
-- Added F1-style row gaps, position tiles, an underlined title, and balanced row padding.
+- Added F1-style `3px` row gaps, full-height position lanes, an underlined title, and balanced row padding.
+- Set the default overlay width to `290`.
 - Added MIT license and third-party notices.

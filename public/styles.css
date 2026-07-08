@@ -107,16 +107,20 @@ body {
 
 .runnerList {
   display: grid;
-  gap: 1px;
+  gap: 3px;
+}
+
+.overlayHeader + .runnerList {
+  margin-top: 3px;
 }
 
 .runner {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) max-content;
+  grid-template-columns: 36px minmax(0, 1fr) max-content;
   align-items: center;
   gap: 6px;
   min-height: 36px;
-  padding: 3px var(--overlay-x-padding);
+  padding: 0 var(--overlay-x-padding) 0 0;
   background: var(--overlay-row-bg);
 }
 
@@ -134,12 +138,13 @@ body {
 }
 
 .place {
+  align-self: stretch;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
   color: #ffffff;
   background: rgba(72, 78, 74, 0.5);
   border-radius: 0;
@@ -155,6 +160,7 @@ body {
 .runnerInfo {
   display: grid;
   gap: 1px;
+  padding-block: 3px;
   min-width: 0;
 }
 
@@ -543,9 +549,9 @@ body {
   }
 
   .runner {
-    grid-template-columns: 26px minmax(0, 1fr) minmax(142px, 40%);
+    grid-template-columns: 34px minmax(0, 1fr) minmax(142px, 40%);
     gap: 6px;
-    padding-inline: var(--overlay-x-padding);
+    padding: 0 var(--overlay-x-padding) 0 0;
   }
 
   .runnerStats {
