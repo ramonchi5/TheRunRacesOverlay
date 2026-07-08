@@ -124,9 +124,9 @@ After anyone finishes:
 
 ## Attribution And Licensing
 
-See [NOTICE.md](NOTICE.md) for third-party notices.
+This project is released under the MIT License. See [LICENSE](LICENSE).
 
-This repository does not currently declare an open-source license for its own source code. Add one before a public `v1.0.0` release if you want to grant explicit reuse rights.
+See [NOTICE.md](NOTICE.md) for third-party notices.
 
 ## Notes
 
