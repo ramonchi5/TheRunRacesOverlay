@@ -167,7 +167,7 @@ body {
 }
 
 .raceDelta {
-  color: #ffd166;
+  color: #ff6f6f;
   grid-column: 1;
   grid-row: 1;
   justify-self: end;
@@ -181,11 +181,11 @@ body {
 }
 
 .raceDelta.ahead {
-  color: #7fcd79;
+  color: #7dff8c;
 }
 
 .raceDelta.behind {
-  color: #ffd166;
+  color: #ff6f6f;
 }
 
 .raceDelta.leader {
@@ -218,7 +218,7 @@ body {
 .runnerNameText {
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -317,9 +317,11 @@ body {
 .runnerRating {
   flex: 0 0 auto;
   margin-left: 4px;
-  line-height: 0;
+  line-height: 1;
+  position: relative;
   text-shadow: inherit;
-  vertical-align: super;
+  top: -0.42em;
+  vertical-align: baseline;
 }
 
 .runnerRatingDelta {
