@@ -179,7 +179,10 @@ function renderRunner(runner) {
     <article class="runner ${isDnf ? "isDnf" : ""}">
       <div class="place">${escapeHtml(place)}</div>
       <div class="runnerInfo">
-        <span class="runnerName">${escapeHtml(runner.username)}${rating}</span>
+        <span class="runnerName">
+          <span class="runnerNameText">${escapeHtml(runner.username)}</span>
+          ${rating}
+        </span>
         <span class="splitMeta">
           <span class="splitPercent">${escapeHtml(percent)}</span>
           <span class="splitDetail">${escapeHtml(splitDetail)}</span>

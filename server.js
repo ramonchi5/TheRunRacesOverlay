@@ -573,7 +573,7 @@ function applyRaceComparisons(runners, options = {}) {
   });
 
   const primaryKey = choosePrimaryComparisonKey(runnersWithKeys);
-  if (!primaryKey) return runnersWithKeys;
+  if (!primaryKey) return applyFinishedFallbackPlaces(runnersWithKeys);
 
   const comparable = runnersWithKeys.filter(
     (runner) => runner.comparisonStructureKey === primaryKey && runner.splitProfile?.units?.length
@@ -603,17 +603,42 @@ function applyRaceComparisons(runners, options = {}) {
   });
 
   const rankedNames = new Set(rankedWithPlaces.map((runner) => runner.username));
+  const shouldNumberFinishedFallbacks = !!finishedBaseline;
+  let fallbackPlace = rankedWithPlaces.length;
   const bottomRunners = incompatible
     .filter((runner) => !rankedNames.has(runner.username))
-    .map((runner) => ({
-      ...runner,
-      place: "-",
-      raceDelta: null,
-      raceDeltaMs: null,
-    }))
-    .sort((a, b) => a.originalIndex - b.originalIndex);
+    .sort((a, b) => a.originalIndex - b.originalIndex)
+    .map((runner) => {
+      const place = shouldNumberFinishedFallbacks && !isDnfRunner(runner) ? `#${++fallbackPlace}` : "-";
+      return {
+        ...runner,
+        place,
+        raceDelta: null,
+        raceDeltaMs: null,
+      };
+    });
 
   return [...rankedWithPlaces, ...bottomRunners].map(stripInternalRunnerFields);
+}
+
+function applyFinishedFallbackPlaces(runners) {
+  if (!runners.some((runner) => isFinishedRunner(runner) && runner.finalTimeMs != null)) {
+    return runners.map(stripInternalRunnerFields);
+  }
+
+  let fallbackPlace = 0;
+  return runners
+    .map((runner) => {
+      const place = isDnfRunner(runner) ? "-" : `#${++fallbackPlace}`;
+      return {
+        ...runner,
+        place,
+        raceDelta: null,
+        raceDeltaMs: null,
+        isComparisonBaseline: fallbackPlace === 1 && place !== "-",
+      };
+    })
+    .map(stripInternalRunnerFields);
 }
 
 function getComparisonStructureKey(runner, profile, includeSubsplits) {

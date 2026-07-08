@@ -201,8 +201,10 @@ body {
 }
 
 .runnerName {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   color: #ffffff;
   font-size: 0.95rem;
@@ -211,6 +213,13 @@ body {
 
 [data-theme="light"] .runnerName {
   color: #152019;
+}
+
+.runnerNameText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .currentTime {
@@ -290,6 +299,7 @@ body {
 }
 
 .runnerRating {
+  flex: 0 0 auto;
   margin-left: 4px;
   line-height: 0;
   text-shadow: inherit;
