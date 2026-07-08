@@ -159,6 +159,7 @@ function renderRunner(runner) {
   const percent = runner.percent && runner.percent !== "-" ? runner.percent : latestSplit?.percent || "-";
   const splitDetail = latestSplit ? `${splitTime} at ${splitName}` : "No split yet";
   const isFinished = runner.finalTimeMs != null || /^done$/i.test(runner.status || "");
+  const isAbandoned = /abandoned/i.test(`${runner.status} ${runner.currentTime}`);
   const confirmation = runner.confirmationStatus === "confirmed" ? "confirmed" : "waiting for confirmation";
   const isDnf = /dnf|abandoned|forfeit/i.test(`${runner.status} ${runner.currentTime}`);
   const ratingDelta = runner.ratingDelta
@@ -185,8 +186,13 @@ function renderRunner(runner) {
           ${rating}
         </span>
         ${
-          isFinished
-            ? `<span class="splitMeta isFinished"><span class="finishDetail">Finished (${escapeHtml(confirmation)})</span></span>`
+          isAbandoned || isFinished
+            ? `<span class="splitMeta isOutcome">
+                <span class="outcomeDetail">
+                  <span class="outcomeLabel ${isAbandoned ? "isAbandoned" : "isFinished"}">${isAbandoned ? "Abandoned" : "Finished"}</span>
+                  <span class="outcomeConfirmation">(${escapeHtml(confirmation)})</span>
+                </span>
+              </span>`
             : `<span class="splitMeta">
                 <span class="splitPercent">${escapeHtml(percent)}</span>
                 <span class="splitDetail">${escapeHtml(splitDetail)}</span>

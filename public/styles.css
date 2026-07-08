@@ -258,13 +258,13 @@ body {
   font-style: italic;
 }
 
-.splitMeta.isFinished {
+.splitMeta.isOutcome {
   display: block;
 }
 
 .splitPercent,
 .splitDetail,
-.finishDetail,
+.outcomeDetail,
 .rating {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -287,15 +287,34 @@ body {
   min-width: 0;
 }
 
-.finishDetail {
+.outcomeDetail {
   display: block;
   overflow: hidden;
-  color: #7dff8c;
   text-overflow: ellipsis;
 }
 
-[data-theme="light"] .finishDetail {
+.outcomeLabel.isFinished {
+  color: #7dff8c;
+}
+
+.outcomeLabel.isAbandoned {
+  color: #ff6f6f;
+}
+
+.outcomeConfirmation {
+  color: rgba(245, 248, 244, 0.78);
+}
+
+[data-theme="light"] .outcomeLabel.isFinished {
   color: #1d7d2b;
+}
+
+[data-theme="light"] .outcomeLabel.isAbandoned {
+  color: #b73737;
+}
+
+[data-theme="light"] .outcomeConfirmation {
+  color: rgba(29, 38, 31, 0.7);
 }
 
 .rating,

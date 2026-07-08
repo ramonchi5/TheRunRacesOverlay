@@ -240,6 +240,7 @@ function parseRaceHtml(html, raceId, sourceUrl) {
       status: runner.status || inferStatus(runner.currentTime),
       currentTime: runner.currentTime || normalizeStatusTime(runner.status) || "-",
       finalTimeMs: runner.finalTimeMs ?? null,
+      abandonedAtMs: runner.abandonedAtMs ?? null,
       totalSplits: runner.totalSplits ?? null,
       plannedMainSplitCount: runner.plannedMainSplitCount ?? null,
       joinOrder: runner.joinOrder ?? null,
@@ -340,7 +341,8 @@ function parseEmbeddedParticipants(race) {
     const ratingAfter = numberOrNull(participant.ratingAfter);
     const ratingDelta = ratingBefore != null && ratingAfter != null ? ratingAfter - ratingBefore : null;
     const isFinished = finalTimeMs != null || liveData.runFinished;
-    const status = getEmbeddedStatus(participant, isFinished);
+    const abandonedAtMs = getParticipantAbandonedAtMs(participant);
+    const status = getEmbeddedStatus(participant, isFinished, abandonedAtMs);
 
     return {
       place: "",
@@ -351,6 +353,7 @@ function parseEmbeddedParticipants(race) {
       status,
       currentTime: currentTimeMs != null ? millisToTime(currentTimeMs) : "",
       finalTimeMs,
+      abandonedAtMs,
       totalSplits: numberOrNull(liveData.totalSplits),
       plannedMainSplitCount: getReliableMainSplitCount({ finalTimeMs, status }, profile),
       joinOrder: index,
@@ -389,16 +392,23 @@ function rowsFromSplitPredictions(predictions, totalSplits) {
     });
 }
 
-function getEmbeddedStatus(participant, isFinished) {
-  if (participant.disqualified || participant.abandondedAtDate) return "DNF";
+function getEmbeddedStatus(participant, isFinished, abandonedAtMs) {
+  if (abandonedAtMs != null || /abandoned/i.test(participant.status || "")) return "Abandoned";
+  if (participant.disqualified) return "DNF";
   if (isFinished) return "Done";
   return participant.status === "ready" ? "Ready" : "Racing";
 }
 
 function getConfirmationStatus(participant, race) {
   if (participant.confirmedAtDate || participant.status === "confirmed" || race.autoConfirm) return "confirmed";
-  if (participant.finalTime != null || participant.liveData?.runFinished) return "waiting for confirmation";
+  if (participant.finalTime != null || participant.liveData?.runFinished || getParticipantAbandonedAtMs(participant) != null) {
+    return "waiting for confirmation";
+  }
   return "";
+}
+
+function getParticipantAbandonedAtMs(participant) {
+  return dateToMillis(participant.abandondedAtDate || participant.abandonedAtDate || participant.forfeitedAtDate);
 }
 
 function getRunnerPercent(liveData, profile, isFinished) {
@@ -469,6 +479,7 @@ function parseParticipantCards(html) {
     const timerHtml = timerMatch?.[1] || "";
     const timerTitle = timerHtml.match(/<abbr[^>]+title="([^"]+)"/i)?.[1];
     const currentTime = cleanTimeText(textFromHtml(timerHtml));
+    const abandonedAtMs = /^abandoned$/i.test(status) ? timeToMillis(timerTitle || currentTime) : null;
     const liveDataText = textFromHtml(segment);
     const totalSplits = Number(liveDataText.match(/\b\d+\s*\/\s*(\d+)\s*-/)?.[1]) || null;
 
@@ -480,6 +491,7 @@ function parseParticipantCards(html) {
       status,
       currentTime,
       finalTimeMs: /^done$/i.test(status) ? timeToMillis(timerTitle || currentTime) : null,
+      abandonedAtMs,
       totalSplits,
       joinOrder: index,
     });
@@ -679,18 +691,20 @@ function applyRaceComparisons(runners) {
       isComparisonBaseline: false,
     };
   });
+  const abandonedRunners = runnersWithKeys.filter(isAbandonedRunner).sort(compareAbandonedPlacement);
+  const contenders = runnersWithKeys.filter((runner) => !isAbandonedRunner(runner));
 
-  const finishedCandidates = runnersWithKeys.filter((runner) => !isDnfRunner(runner) && runner.finalTimeMs != null);
-  if (finishedCandidates.length) return applyFinishedComparisons(runnersWithKeys, finishedCandidates);
+  const finishedCandidates = contenders.filter((runner) => !isDnfRunner(runner) && runner.finalTimeMs != null);
+  if (finishedCandidates.length) return applyFinishedComparisons(contenders, finishedCandidates, abandonedRunners);
 
-  const primaryKey = choosePrimaryComparisonKey(runnersWithKeys);
-  if (!primaryKey) return applyFinishedFallbackPlaces(runnersWithKeys);
+  const primaryKey = choosePrimaryComparisonKey(contenders);
+  if (!primaryKey) return applyFinishedFallbackPlaces(contenders, abandonedRunners);
 
-  const comparable = runnersWithKeys.filter(
+  const comparable = contenders.filter(
     (runner) => isComparableWithPrimaryKey(runner, primaryKey) && runner.splitProfile?.units?.length
   );
   const rankedCandidates = comparable.filter((runner) => !isDnfRunner(runner));
-  const incompatible = runnersWithKeys.filter((runner) => !rankedCandidates.includes(runner));
+  const incompatible = contenders.filter((runner) => !rankedCandidates.includes(runner));
   const ranked = rankedCandidates.slice().sort(compareByLatestSharedSplit);
 
   const baseline = ranked[0] || null;
@@ -720,10 +734,10 @@ function applyRaceComparisons(runners) {
       };
     });
 
-  return [...rankedWithPlaces, ...bottomRunners].map(stripInternalRunnerFields);
+  return appendAbandonedPlaces([...rankedWithPlaces, ...bottomRunners], abandonedRunners).map(stripInternalRunnerFields);
 }
 
-function applyFinishedComparisons(runners, finishedCandidates) {
+function applyFinishedComparisons(runners, finishedCandidates, abandonedRunners = []) {
   const finished = finishedCandidates.slice().sort((a, b) => (a.finalTimeMs ?? Infinity) - (b.finalTimeMs ?? Infinity));
   const baseline = finished[0] || null;
   const finishedNames = new Set(finished.map((runner) => runner.username));
@@ -771,16 +785,16 @@ function applyFinishedComparisons(runners, finishedCandidates) {
       isComparisonBaseline: false,
     }));
 
-  return [...rankedFinished, ...rankedActive, ...rankedDnf].map(stripInternalRunnerFields);
+  return appendAbandonedPlaces([...rankedFinished, ...rankedActive, ...rankedDnf], abandonedRunners).map(stripInternalRunnerFields);
 }
 
-function applyFinishedFallbackPlaces(runners) {
+function applyFinishedFallbackPlaces(runners, abandonedRunners = []) {
   if (!runners.some((runner) => isFinishedRunner(runner) && runner.finalTimeMs != null)) {
-    return runners.map(stripInternalRunnerFields);
+    return appendAbandonedPlaces(runners, abandonedRunners).map(stripInternalRunnerFields);
   }
 
   let fallbackPlace = 0;
-  return runners
+  const rankedRunners = runners
     .map((runner) => {
       const place = isDnfRunner(runner) ? "-" : `#${++fallbackPlace}`;
       return {
@@ -790,8 +804,26 @@ function applyFinishedFallbackPlaces(runners) {
         raceDeltaMs: null,
         isComparisonBaseline: fallbackPlace === 1 && place !== "-",
       };
-    })
-    .map(stripInternalRunnerFields);
+    });
+
+  return appendAbandonedPlaces(rankedRunners, abandonedRunners).map(stripInternalRunnerFields);
+}
+
+function appendAbandonedPlaces(rankedRunners, abandonedRunners = []) {
+  const highestExistingPlace = rankedRunners.reduce((highest, runner) => {
+    const placeNumber = Number.parseInt(String(runner.place || "").replace("#", ""), 10);
+    return Number.isFinite(placeNumber) ? Math.max(highest, placeNumber) : highest;
+  }, 0);
+  const nonAbandonedCount = rankedRunners.filter((runner) => !isDnfRunner(runner)).length;
+  let place = Math.max(highestExistingPlace, nonAbandonedCount);
+  const rankedAbandoned = abandonedRunners.map((runner) => ({
+    ...runner,
+    place: `#${++place}`,
+    raceDelta: null,
+    raceDeltaMs: null,
+    isComparisonBaseline: false,
+  }));
+  return [...rankedRunners, ...rankedAbandoned];
 }
 
 function getComparisonStructureKey(runner, profile) {
@@ -870,6 +902,17 @@ function isDnfRunner(runner) {
   return /dnf|abandoned|forfeit/i.test(`${runner.status || ""} ${runner.currentTime || ""}`);
 }
 
+function isAbandonedRunner(runner) {
+  return runner.abandonedAtMs != null || /abandoned/i.test(`${runner.status || ""} ${runner.currentTime || ""}`);
+}
+
+function compareAbandonedPlacement(a, b) {
+  const aTime = a.abandonedAtMs ?? timeToMillis(a.currentTime) ?? Number.NEGATIVE_INFINITY;
+  const bTime = b.abandonedAtMs ?? timeToMillis(b.currentTime) ?? Number.NEGATIVE_INFINITY;
+  if (aTime !== bTime) return bTime - aTime;
+  return a.originalIndex - b.originalIndex;
+}
+
 function getReliableMainSplitCount(runner, profile) {
   if (!profile?.units?.length) return null;
   if (runner.plannedMainSplitCount) return runner.plannedMainSplitCount;
@@ -904,7 +947,7 @@ function dedupeByUsername(runners) {
 }
 
 function inferStatus(currentTime) {
-  if (/abandoned/i.test(currentTime || "")) return "DNF";
+  if (/abandoned/i.test(currentTime || "")) return "Abandoned";
   return "";
 }
 
@@ -935,6 +978,12 @@ function shortTime(value) {
 function numberOrNull(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function dateToMillis(value) {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
 }
 
 function millisToTime(value, includeMillis = false) {
