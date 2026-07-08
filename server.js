@@ -90,12 +90,6 @@ function normalizeRaceInput(input) {
   return match[1];
 }
 
-function normalizeSubsplitsMode(value) {
-  const raw = String(value || "off").trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(raw)) return "on";
-  return "off";
-}
-
 function getCurrentRaceId() {
   return currentRace?.raceId || null;
 }
@@ -177,9 +171,8 @@ function fetchText(url, redirectsLeft = 4) {
   });
 }
 
-async function getRaceData(raceId, options = {}) {
-  const subsplitsMode = normalizeSubsplitsMode(options.subsplitsMode);
-  const cacheKey = `${raceId}:${subsplitsMode}`;
+async function getRaceData(raceId) {
+  const cacheKey = raceId;
   const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.time < CACHE_TTL_MS) {
     return cached.data;
@@ -187,45 +180,52 @@ async function getRaceData(raceId, options = {}) {
 
   const sourceUrl = `https://therun.gg/races/${encodeURIComponent(raceId)}`;
   const html = await fetchText(sourceUrl);
-  const data = parseRaceHtml(html, raceId, sourceUrl, { subsplitsMode });
+  const data = parseRaceHtml(html, raceId, sourceUrl);
   cache.set(cacheKey, { time: Date.now(), data });
   return data;
 }
 
-function parseRaceHtml(html, raceId, sourceUrl, options = {}) {
+function parseRaceHtml(html, raceId, sourceUrl) {
+  const embeddedRace = parseEmbeddedRace(html);
   const standings = parseStandings(html);
   const cards = parseParticipantCards(html);
   const splitRows = parseSplitRows(html);
   const profilesByRunner = buildProfilesByRunner(splitRows);
   const metadata = parseMetadata(html);
-  const subsplitsMode = resolveSubsplitsMode(options.subsplitsMode);
-  const includeSubsplits = subsplitsMode === "on";
+  const embeddedRunners = parseEmbeddedParticipants(embeddedRace);
 
   const runnersByName = new Map();
   const addRunner = (runner) => {
     if (!runner || !runner.username) return;
     const existing = runnersByName.get(runner.username) || {};
-    runnersByName.set(runner.username, { ...existing, ...runner });
+    const merged = { ...existing };
+    for (const [key, value] of Object.entries(runner)) {
+      if ((value === "" || value == null) && existing[key] != null && existing[key] !== "") continue;
+      merged[key] = value;
+    }
+    runnersByName.set(runner.username, merged);
   };
 
   standings.forEach(addRunner);
   cards.forEach(addRunner);
+  embeddedRunners.forEach(addRunner);
 
   for (const [username, profiles] of profilesByRunner) {
     const existing = runnersByName.get(username) || { username };
-    const profile = includeSubsplits ? profiles.withSubsplits : profiles.mainOnly;
-    const latestSplit = profile.units.at(-1) || profiles.withSubsplits.units.at(-1) || null;
+    const existingProfile = existing.splitProfileMainOnly;
+    const profile = existingProfile?.units?.length ? existingProfile : profiles.mainOnly;
+    const latestSplit = profile.units.at(-1) || null;
     runnersByName.set(username, {
       ...existing,
       latestSplit,
       splitProfile: profile,
-      splitProfileMainOnly: profiles.mainOnly,
-      splitProfileWithSubsplits: profiles.withSubsplits,
+      splitProfileMainOnly: profile,
+      plannedMainSplitCount: existing.plannedMainSplitCount ?? getReliableMainSplitCount(existing, profile),
       percent: existing.percent || latestSplit?.percent,
     });
   }
 
-  const preferredOrder = cards.length ? cards : standings;
+  const preferredOrder = cards.length ? cards : standings.length ? standings : embeddedRunners;
   const orderedNames = preferredOrder.map((runner) => runner.username);
   const leftovers = [...runnersByName.keys()].filter((name) => !orderedNames.includes(name));
   const runners = [...orderedNames, ...leftovers]
@@ -241,18 +241,19 @@ function parseRaceHtml(html, raceId, sourceUrl, options = {}) {
       currentTime: runner.currentTime || normalizeStatusTime(runner.status) || "-",
       finalTimeMs: runner.finalTimeMs ?? null,
       totalSplits: runner.totalSplits ?? null,
+      plannedMainSplitCount: runner.plannedMainSplitCount ?? null,
       joinOrder: runner.joinOrder ?? null,
+      confirmationStatus: runner.confirmationStatus || "",
       latestSplit: runner.latestSplit || null,
       splitProfile: runner.splitProfile || null,
       splitProfileMainOnly: runner.splitProfileMainOnly || null,
-      splitProfileWithSubsplits: runner.splitProfileWithSubsplits || null,
     }));
 
   if (!runners.length) {
     throw new Error("Could not find runners in the therun.gg race page.");
   }
 
-  const rankedRunners = applyRaceComparisons(runners, { includeSubsplits });
+  const rankedRunners = applyRaceComparisons(runners);
 
   return {
     ok: true,
@@ -262,7 +263,6 @@ function parseRaceHtml(html, raceId, sourceUrl, options = {}) {
     game: metadata.game,
     category: metadata.category,
     raceTimer: metadata.raceTimer,
-    subsplitsMode,
     fetchedAt: new Date().toISOString(),
     runners: rankedRunners,
   };
@@ -282,6 +282,136 @@ function parseMetadata(html) {
     category: categoryParts.join(" - "),
     raceTimer: cleanTimeText(textFromHtml(timerMatch?.[1] || "")),
   };
+}
+
+function parseEmbeddedRace(html) {
+  const flightRegex = /self\.__next_f\.push\(\[1,"([\s\S]*?)"\]\)<\/script>/g;
+  for (const match of html.matchAll(flightRegex)) {
+    const decoded = parseJsonString(match[1]);
+    if (!decoded || !decoded.includes('"race":')) continue;
+
+    const jsonStart = decoded.indexOf("[");
+    if (jsonStart < 0) continue;
+
+    try {
+      const payload = JSON.parse(decoded.slice(jsonStart).trim());
+      const race = findRacePayload(payload);
+      if (race?.participants?.length) return race;
+    } catch {
+      // Fall through to the older HTML scrapers.
+    }
+  }
+  return null;
+}
+
+function parseJsonString(value) {
+  try {
+    return JSON.parse(`"${value}"`);
+  } catch {
+    return "";
+  }
+}
+
+function findRacePayload(value) {
+  if (!value || typeof value !== "object") return null;
+  if (value.race?.participants) return value.race;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const race = findRacePayload(item);
+      if (race) return race;
+    }
+    return null;
+  }
+  for (const item of Object.values(value)) {
+    const race = findRacePayload(item);
+    if (race) return race;
+  }
+  return null;
+}
+
+function parseEmbeddedParticipants(race) {
+  if (!race?.participants?.length) return [];
+  return race.participants.map((participant, index) => {
+    const liveData = participant.liveData || {};
+    const profile = buildSplitProfile(rowsFromSplitPredictions(liveData.splitPredictions || [], liveData.totalSplits));
+    const finalTimeMs = numberOrNull(participant.finalTime) ?? (liveData.runFinished ? numberOrNull(liveData.currentTime) : null);
+    const currentTimeMs = numberOrNull(liveData.currentTime) ?? finalTimeMs;
+    const ratingBefore = numberOrNull(participant.ratingBefore);
+    const ratingAfter = numberOrNull(participant.ratingAfter);
+    const ratingDelta = ratingBefore != null && ratingAfter != null ? ratingAfter - ratingBefore : null;
+    const isFinished = finalTimeMs != null || liveData.runFinished;
+    const status = getEmbeddedStatus(participant, isFinished);
+
+    return {
+      place: "",
+      username: participant.user || "",
+      rating: ratingAfter != null ? String(ratingAfter) : ratingBefore != null ? String(ratingBefore) : "",
+      ratingDelta: ratingDelta == null ? "" : `${ratingDelta >= 0 ? "+" : ""}${ratingDelta}`,
+      percent: getRunnerPercent(liveData, profile, isFinished),
+      status,
+      currentTime: currentTimeMs != null ? millisToTime(currentTimeMs) : "",
+      finalTimeMs,
+      totalSplits: numberOrNull(liveData.totalSplits),
+      plannedMainSplitCount: getReliableMainSplitCount({ finalTimeMs, status }, profile),
+      joinOrder: index,
+      confirmationStatus: getConfirmationStatus(participant, race),
+      latestSplit: profile.units.at(-1) || null,
+      splitProfile: profile,
+      splitProfileMainOnly: profile,
+    };
+  });
+}
+
+function rowsFromSplitPredictions(predictions, totalSplits) {
+  const byIndex = new Map();
+  for (const prediction of predictions) {
+    const splitIndex = numberOrNull(prediction.splitIndex);
+    const currentTime = numberOrNull(prediction.currentTime);
+    const splitName = String(prediction.splitName || "").trim();
+    if (splitIndex == null || currentTime == null || !splitName) continue;
+    byIndex.set(splitIndex, prediction);
+  }
+
+  return [...byIndex.values()]
+    .sort((a, b) => Number(a.splitIndex) - Number(b.splitIndex))
+    .map((prediction) => {
+      const splitIndex = numberOrNull(prediction.splitIndex);
+      const currentTime = numberOrNull(prediction.currentTime);
+      return {
+        username: "",
+        rawName: prediction.splitName,
+        time: millisToTime(currentTime),
+        preciseTime: millisToTime(currentTime, true),
+        timeMs: currentTime,
+        percent: splitPercent(splitIndex, totalSplits),
+        rawSplitIndex: splitIndex,
+      };
+    });
+}
+
+function getEmbeddedStatus(participant, isFinished) {
+  if (participant.disqualified || participant.abandondedAtDate) return "DNF";
+  if (isFinished) return "Done";
+  return participant.status === "ready" ? "Ready" : "Racing";
+}
+
+function getConfirmationStatus(participant, race) {
+  if (participant.confirmedAtDate || participant.status === "confirmed" || race.autoConfirm) return "confirmed";
+  if (participant.finalTime != null || participant.liveData?.runFinished) return "waiting for confirmation";
+  return "";
+}
+
+function getRunnerPercent(liveData, profile, isFinished) {
+  if (isFinished) return "100%";
+  const runPercent = numberOrNull(liveData.runPercentageSplits);
+  if (runPercent != null) return `${Math.max(0, Math.min(100, Math.floor(runPercent * 100)))}%`;
+  return profile.units.at(-1)?.percent || "-";
+}
+
+function splitPercent(splitIndex, totalSplits) {
+  const total = numberOrNull(totalSplits);
+  if (!total || splitIndex == null) return "-";
+  return `${Math.max(0, Math.min(100, Math.floor((splitIndex / total) * 100)))}%`;
 }
 
 function parseStandings(html) {
@@ -403,14 +533,13 @@ function buildProfilesByRunner(splitRowsNewestFirst) {
   for (const [username, newestFirstRows] of rowsByRunner) {
     const chronologicalRows = newestFirstRows.slice().reverse();
     profiles.set(username, {
-      mainOnly: buildSplitProfile(chronologicalRows, false),
-      withSubsplits: buildSplitProfile(chronologicalRows, true),
+      mainOnly: buildSplitProfile(chronologicalRows),
     });
   }
   return profiles;
 }
 
-function buildSplitProfile(rows, includeSubsplits) {
+function buildSplitProfile(rows) {
   const events = rows.map((row) => ({
     ...row,
     parsed: parseSplitLabel(row.rawName),
@@ -478,16 +607,7 @@ function buildSplitProfile(rows, includeSubsplits) {
 
     const group = event.groupInfo;
     const groupIndex = groups.indexOf(group);
-    if (includeSubsplits) {
-      units.push(
-        makeSplitUnit(
-          event,
-          units.length,
-          groupIndex,
-          formatSubsplitDisplay(group?.groupName, parsed.subIndex, parsed.total, parsed.name)
-        )
-      );
-    } else if (parsed.subIndex === parsed.total) {
+    if (parsed.subIndex === parsed.total) {
       units.push(makeSplitUnit(event, units.length, groupIndex, group?.groupName || parsed.name));
     }
   }
@@ -503,10 +623,7 @@ function buildSplitProfile(rows, includeSubsplits) {
     mainSplitCount: mainGroups.length,
     groupTotals: mainGroups.map((group) => group.total),
     mainStructureSignature: `main:${mainGroups.length}`,
-    subStructureSignature: mainGroups.length
-      ? `sub:${mainGroups.map((group) => group.total).join("|")}`
-      : "",
-    hasSubsplits: mainGroups.some((group) => group.total > 1),
+    hasNestedSplits: mainGroups.some((group) => group.total > 1),
   };
 }
 
@@ -520,6 +637,7 @@ function makeSplitUnit(event, index, groupIndex, displayName) {
     preciseTime: event.preciseTime,
     timeMs: event.timeMs,
     percent: event.percent,
+    rawSplitIndex: event.rawSplitIndex ?? null,
   };
 }
 
@@ -547,20 +665,10 @@ function parseSplitLabel(rawName) {
   };
 }
 
-function formatSubsplitDisplay(groupName, subIndex, total, name) {
-  const subSplitName = `${name} (${subIndex} of ${total})`.trim();
-  return groupName ? `${groupName} - ${subSplitName}` : subSplitName;
-}
-
-function resolveSubsplitsMode(requestedMode) {
-  return normalizeSubsplitsMode(requestedMode);
-}
-
-function applyRaceComparisons(runners, options = {}) {
-  const includeSubsplits = !!options.includeSubsplits;
+function applyRaceComparisons(runners) {
   const runnersWithKeys = runners.map((runner, originalIndex) => {
-    const profile = includeSubsplits ? runner.splitProfileWithSubsplits : runner.splitProfileMainOnly;
-    const structureKey = getComparisonStructureKey(runner, profile, includeSubsplits);
+    const profile = runner.splitProfileMainOnly || runner.splitProfile;
+    const structureKey = getComparisonStructureKey(runner, profile);
     return {
       ...runner,
       originalIndex,
@@ -572,27 +680,22 @@ function applyRaceComparisons(runners, options = {}) {
     };
   });
 
+  const finishedCandidates = runnersWithKeys.filter((runner) => !isDnfRunner(runner) && runner.finalTimeMs != null);
+  if (finishedCandidates.length) return applyFinishedComparisons(runnersWithKeys, finishedCandidates);
+
   const primaryKey = choosePrimaryComparisonKey(runnersWithKeys);
   if (!primaryKey) return applyFinishedFallbackPlaces(runnersWithKeys);
 
   const comparable = runnersWithKeys.filter(
-    (runner) => runner.comparisonStructureKey === primaryKey && runner.splitProfile?.units?.length
+    (runner) => isComparableWithPrimaryKey(runner, primaryKey) && runner.splitProfile?.units?.length
   );
   const rankedCandidates = comparable.filter((runner) => !isDnfRunner(runner));
   const incompatible = runnersWithKeys.filter((runner) => !rankedCandidates.includes(runner));
-  const finishedCandidates = rankedCandidates.filter((runner) => isFinishedRunner(runner) && runner.finalTimeMs != null);
-  const finishedBaseline = finishedCandidates.slice().sort((a, b) => a.finalTimeMs - b.finalTimeMs)[0] || null;
+  const ranked = rankedCandidates.slice().sort(compareByLatestSharedSplit);
 
-  let ranked = [];
-  if (finishedBaseline) {
-    ranked = rankedCandidates.slice().sort((a, b) => compareAgainstFinishedBaseline(a, b, finishedBaseline));
-  } else {
-    ranked = rankedCandidates.slice().sort(compareByLatestSharedSplit);
-  }
-
-  const baseline = finishedBaseline || ranked[0] || null;
+  const baseline = ranked[0] || null;
   const rankedWithPlaces = ranked.map((runner, index) => {
-    const deltaMs = baseline && runner !== baseline ? getDeltaAgainstBaseline(runner, baseline, !!finishedBaseline) : null;
+    const deltaMs = baseline && runner !== baseline ? getSplitDeltaAgainstBaseline(runner, baseline) : null;
     return {
       ...runner,
       place: `#${index + 1}`,
@@ -603,13 +706,12 @@ function applyRaceComparisons(runners, options = {}) {
   });
 
   const rankedNames = new Set(rankedWithPlaces.map((runner) => runner.username));
-  const shouldNumberFinishedFallbacks = !!finishedBaseline;
   let fallbackPlace = rankedWithPlaces.length;
   const bottomRunners = incompatible
     .filter((runner) => !rankedNames.has(runner.username))
     .sort((a, b) => a.originalIndex - b.originalIndex)
     .map((runner) => {
-      const place = shouldNumberFinishedFallbacks && !isDnfRunner(runner) ? `#${++fallbackPlace}` : "-";
+      const place = runner.place && runner.place !== "-" ? normalizeDisplayPlace(runner.place) : !isDnfRunner(runner) ? `#${++fallbackPlace}` : "-";
       return {
         ...runner,
         place,
@@ -619,6 +721,57 @@ function applyRaceComparisons(runners, options = {}) {
     });
 
   return [...rankedWithPlaces, ...bottomRunners].map(stripInternalRunnerFields);
+}
+
+function applyFinishedComparisons(runners, finishedCandidates) {
+  const finished = finishedCandidates.slice().sort((a, b) => (a.finalTimeMs ?? Infinity) - (b.finalTimeMs ?? Infinity));
+  const baseline = finished[0] || null;
+  const finishedNames = new Set(finished.map((runner) => runner.username));
+  const active = runners
+    .filter((runner) => !finishedNames.has(runner.username) && !isDnfRunner(runner))
+    .map((runner) => {
+      const deltaMs = baseline ? getSplitDeltaAgainstBaseline(runner, baseline) : null;
+      return {
+        ...runner,
+        raceDeltaMs: deltaMs,
+        raceDelta: deltaMs == null ? null : formatDelta(deltaMs),
+      };
+    })
+    .sort((a, b) => {
+      if (a.raceDeltaMs != null || b.raceDeltaMs != null) return (a.raceDeltaMs ?? Infinity) - (b.raceDeltaMs ?? Infinity);
+      return compareByLatestSharedSplit(a, b);
+    });
+  const dnf = runners.filter((runner) => !finishedNames.has(runner.username) && isDnfRunner(runner));
+
+  let place = 0;
+  const rankedFinished = finished.map((runner) => {
+    const deltaMs = baseline && runner !== baseline ? runner.finalTimeMs - baseline.finalTimeMs : null;
+    return {
+      ...runner,
+      place: `#${++place}`,
+      raceDeltaMs: deltaMs,
+      raceDelta: deltaMs == null ? null : formatDelta(deltaMs),
+      isComparisonBaseline: runner === baseline,
+    };
+  });
+
+  const rankedActive = active.map((runner) => ({
+    ...runner,
+    place: `#${++place}`,
+    isComparisonBaseline: false,
+  }));
+
+  const rankedDnf = dnf
+    .sort((a, b) => a.originalIndex - b.originalIndex)
+    .map((runner) => ({
+      ...runner,
+      place: "-",
+      raceDelta: null,
+      raceDeltaMs: null,
+      isComparisonBaseline: false,
+    }));
+
+  return [...rankedFinished, ...rankedActive, ...rankedDnf].map(stripInternalRunnerFields);
 }
 
 function applyFinishedFallbackPlaces(runners) {
@@ -641,19 +794,25 @@ function applyFinishedFallbackPlaces(runners) {
     .map(stripInternalRunnerFields);
 }
 
-function getComparisonStructureKey(runner, profile, includeSubsplits) {
-  if (!profile?.units?.length) return "";
-  if (includeSubsplits) return profile.subStructureSignature || "";
-  return `main:${runner.totalSplits || profile.mainSplitCount}`;
+function getComparisonStructureKey(runner, profile) {
+  const reliableCount = runner.plannedMainSplitCount ?? getReliableMainSplitCount(runner, profile);
+  if (reliableCount) return `main:${reliableCount}`;
+  return profile?.units?.length ? "main:unknown" : "";
+}
+
+function isComparableWithPrimaryKey(runner, primaryKey) {
+  return runner.comparisonStructureKey === primaryKey || runner.comparisonStructureKey === "main:unknown";
 }
 
 function choosePrimaryComparisonKey(runners) {
   const counts = new Map();
   for (const runner of runners) {
-    if (!runner.comparisonStructureKey) continue;
+    if (!runner.comparisonStructureKey || runner.comparisonStructureKey === "main:unknown") continue;
     counts.set(runner.comparisonStructureKey, (counts.get(runner.comparisonStructureKey) || 0) + 1);
   }
-  if (!counts.size) return "";
+  if (!counts.size) {
+    return runners.some((runner) => runner.comparisonStructureKey === "main:unknown") ? "main:unknown" : "";
+  }
 
   const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
   const topCount = sorted[0][1];
@@ -665,21 +824,6 @@ function choosePrimaryComparisonKey(runners) {
     .sort((a, b) => (a.joinOrder ?? a.originalIndex) - (b.joinOrder ?? b.originalIndex))
     .find((runner) => tiedKeys.includes(runner.comparisonStructureKey));
   return firstJoinedWithKey?.comparisonStructureKey || tiedKeys[0];
-}
-
-function compareAgainstFinishedBaseline(a, b, baseline) {
-  if (a === baseline) return -1;
-  if (b === baseline) return 1;
-
-  const aFinished = isFinishedRunner(a);
-  const bFinished = isFinishedRunner(b);
-  if (aFinished && bFinished) return (a.finalTimeMs ?? Infinity) - (b.finalTimeMs ?? Infinity);
-  if (aFinished !== bFinished) return aFinished ? -1 : 1;
-
-  const aDelta = getDeltaAgainstBaseline(a, baseline, true);
-  const bDelta = getDeltaAgainstBaseline(b, baseline, true);
-  if (aDelta != null || bDelta != null) return (aDelta ?? Infinity) - (bDelta ?? Infinity);
-  return a.originalIndex - b.originalIndex;
 }
 
 function compareByLatestSharedSplit(a, b) {
@@ -694,25 +838,18 @@ function compareByLatestSharedSplit(a, b) {
   const bLength = b.splitProfile?.units?.length || 0;
   if (aLength !== bLength) return bLength - aLength;
 
-  const aCurrent = timeToMillis(a.currentTime);
-  const bCurrent = timeToMillis(b.currentTime);
-  if (aCurrent != null && bCurrent != null && aCurrent !== bCurrent) return aCurrent - bCurrent;
   return a.originalIndex - b.originalIndex;
 }
 
-function getDeltaAgainstBaseline(runner, baseline, finishedBaseline) {
+function getSplitDeltaAgainstBaseline(runner, baseline) {
   if (!runner?.splitProfile?.units?.length || !baseline?.splitProfile?.units?.length) return null;
-
-  if (finishedBaseline && isFinishedRunner(runner) && runner.finalTimeMs != null && baseline.finalTimeMs != null) {
-    return runner.finalTimeMs - baseline.finalTimeMs;
-  }
 
   const runnerUnits = runner.splitProfile.units;
   const baselineUnits = baseline.splitProfile.units;
-  const preferredIndex = finishedBaseline ? runnerUnits.length - 1 : getLatestSharedIndex(runner, baseline);
+  const preferredIndex = getLatestSharedIndex(runner, baseline);
   if (preferredIndex == null || preferredIndex < 0) return null;
 
-  const runnerUnit = runnerUnits[Math.min(preferredIndex, runnerUnits.length - 1)];
+  const runnerUnit = runnerUnits[preferredIndex];
   const baselineUnit = baselineUnits[preferredIndex];
   if (!runnerUnit || !baselineUnit || runnerUnit.timeMs == null || baselineUnit.timeMs == null) return null;
   return runnerUnit.timeMs - baselineUnit.timeMs;
@@ -733,12 +870,24 @@ function isDnfRunner(runner) {
   return /dnf|abandoned|forfeit/i.test(`${runner.status || ""} ${runner.currentTime || ""}`);
 }
 
+function getReliableMainSplitCount(runner, profile) {
+  if (!profile?.units?.length) return null;
+  if (runner.plannedMainSplitCount) return runner.plannedMainSplitCount;
+  if (isFinishedRunner(runner)) return profile.mainSplitCount || profile.units.length;
+
+  const rawTotalSplits = numberOrNull(runner.totalSplits);
+  if (!profile.hasNestedSplits && rawTotalSplits && rawTotalSplits >= profile.units.length) {
+    return rawTotalSplits;
+  }
+
+  return null;
+}
+
 function stripInternalRunnerFields(runner) {
   const {
     originalIndex,
     splitProfile,
     splitProfileMainOnly,
-    splitProfileWithSubsplits,
     comparisonStructureKey,
     ...publicRunner
   } = runner;
@@ -773,8 +922,35 @@ function normalizePlace(value) {
   return clean || "-";
 }
 
+function normalizeDisplayPlace(value) {
+  const clean = normalizePlace(value);
+  if (!clean || clean === "-") return "-";
+  return clean.startsWith("#") ? clean : `#${clean}`;
+}
+
 function shortTime(value) {
   return cleanTimeText(String(value || "").replace(/\.\d+$/, ""));
+}
+
+function numberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function millisToTime(value, includeMillis = false) {
+  const ms = numberOrNull(value);
+  if (ms == null) return "";
+
+  const totalSeconds = Math.max(0, ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const secondsText = includeMillis
+    ? seconds.toFixed(3).padStart(6, "0")
+    : String(Math.floor(seconds)).padStart(2, "0");
+
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${secondsText}`;
+  return `${minutes}:${secondsText}`;
 }
 
 function timeToMillis(value) {
@@ -905,9 +1081,8 @@ const server = http.createServer(async (req, res) => {
 
     if (requestUrl.pathname === "/api/race") {
       const raceInput = requestUrl.searchParams.get("race") || requestUrl.searchParams.get("url") || getCurrentRaceId();
-      const subsplitsMode = requestUrl.searchParams.get("subsplits") || requestUrl.searchParams.get("Subsplits");
       const raceId = normalizeRaceInput(raceInput);
-      const data = await getRaceData(raceId, { subsplitsMode });
+      const data = await getRaceData(raceId);
       sendJson(res, 200, data);
       return;
     }

@@ -14,7 +14,7 @@ This is a first working release candidate. It is ready for live-race testing bef
 - Control page for pasting each new TheRun race URL without changing the OBS source.
 - Runner ranking, current race time, latest split time, and completion percent.
 - Race delta comparison with the fastest finished runner as the baseline once anyone finishes.
-- Optional subsplit display and comparison with `Subsplits=On`.
+- Main split comparison by parent split group.
 - High-resolution default rendering with `zoom=3` for sharper OBS scaling.
 - Transparent page background with a semi-transparent leaderboard panel.
 
@@ -66,19 +66,9 @@ The OBS source keeps the same overlay URL and updates on its next poll.
 
 Add an OBS Browser Source.
 
-For normal splits:
-
 ```text
 URL:    http://localhost:5179/overlay
 Width:  1100
-Height: 900
-```
-
-For subsplits:
-
-```text
-URL:    http://localhost:5179/overlay?Subsplits=On
-Width:  1400
 Height: 900
 ```
 
@@ -96,20 +86,18 @@ Use more height for larger races. After setting the Browser Source size, resize 
 ?zoom=2                            override the default render zoom
 ?panel=1                           use the old framed panel style
 ?theme=light                       use the light panel theme
-?Subsplits=On                      display and compare subsplits
 ```
 
 By default:
 
 ```text
 zoom=3
-width=350 without subsplits
-width=420 with Subsplits=On
+width=350
 ```
 
 If `width=` is present in the URL, it always overrides the automatic width.
 
-Subsplits are off by default. They only turn on when `Subsplits=On`, `subsplits=on`, or another truthy subsplits value is present in the URL.
+Nested split rows are collapsed into their parent main split group for display and comparison.
 
 ## Race Ordering
 

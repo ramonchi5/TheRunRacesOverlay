@@ -6,8 +6,7 @@ const limit = clamp(Number(params.get("limit")) || 12, 1, 99);
 const showTitle = isEnabledParam(params.get("title"), true);
 const theme = params.get("theme") === "light" ? "light" : "dark";
 const panelMode = params.get("panel") === "1" || params.get("background") === "panel";
-const subsplitsMode = normalizeSubsplitsMode(readSearchParam("subsplits"));
-const defaultOverlayWidth = subsplitsMode === "on" ? 420 : 350;
+const defaultOverlayWidth = 350;
 const widthParam = params.get("width");
 const overlayWidth = widthParam ? clamp(Number(widthParam), 320, 2400) : defaultOverlayWidth;
 const renderZoom = clamp(Number(params.get("zoom")) || Number(params.get("scale")) || 3, 1, 4);
@@ -159,6 +158,8 @@ function renderRunner(runner) {
   const splitTime = latestSplit?.time || "--";
   const percent = runner.percent && runner.percent !== "-" ? runner.percent : latestSplit?.percent || "-";
   const splitDetail = latestSplit ? `${splitTime} at ${splitName}` : "No split yet";
+  const isFinished = runner.finalTimeMs != null || /^done$/i.test(runner.status || "");
+  const confirmation = runner.confirmationStatus === "confirmed" ? "confirmed" : "waiting for confirmation";
   const isDnf = /dnf|abandoned|forfeit/i.test(`${runner.status} ${runner.currentTime}`);
   const ratingDelta = runner.ratingDelta
     ? `<span class="runnerRatingDelta ${runner.ratingDelta.startsWith("-") ? "down" : "up"}">${escapeHtml(
@@ -183,10 +184,14 @@ function renderRunner(runner) {
           <span class="runnerNameText">${escapeHtml(runner.username)}</span>
           ${rating}
         </span>
-        <span class="splitMeta">
-          <span class="splitPercent">${escapeHtml(percent)}</span>
-          <span class="splitDetail">${escapeHtml(splitDetail)}</span>
-        </span>
+        ${
+          isFinished
+            ? `<span class="splitMeta isFinished"><span class="finishDetail">Finished (${escapeHtml(confirmation)})</span></span>`
+            : `<span class="splitMeta">
+                <span class="splitPercent">${escapeHtml(percent)}</span>
+                <span class="splitDetail">${escapeHtml(splitDetail)}</span>
+              </span>`
+        }
       </div>
       <div class="runnerStats">
         <div class="timingLine">
@@ -204,8 +209,8 @@ async function refreshRace() {
 
   try {
     const endpoint = fixedRaceInput
-      ? `/api/race?race=${encodeURIComponent(fixedRaceInput)}&subsplits=${subsplitsMode}&now=${Date.now()}`
-      : `/api/race?subsplits=${subsplitsMode}&now=${Date.now()}`;
+      ? `/api/race?race=${encodeURIComponent(fixedRaceInput)}&now=${Date.now()}`
+      : `/api/race?now=${Date.now()}`;
     const response = await fetch(endpoint, { cache: "no-store" });
     const data = await response.json();
     if (!response.ok || !data.ok) {
@@ -225,20 +230,6 @@ function normalizePlace(value) {
   const clean = String(value || "-").replace(/\.$/, "").trim();
   if (!clean || clean === "-") return "-";
   return clean.startsWith("#") ? clean : `#${clean}`;
-}
-
-function readSearchParam(name) {
-  const lowerName = name.toLowerCase();
-  for (const [key, value] of params) {
-    if (key.toLowerCase() === lowerName) return value;
-  }
-  return "";
-}
-
-function normalizeSubsplitsMode(value) {
-  const raw = String(value || "off").trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(raw)) return "on";
-  return "off";
 }
 
 function isEnabledParam(value, defaultValue) {

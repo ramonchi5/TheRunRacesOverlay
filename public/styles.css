@@ -258,8 +258,13 @@ body {
   font-style: italic;
 }
 
+.splitMeta.isFinished {
+  display: block;
+}
+
 .splitPercent,
 .splitDetail,
+.finishDetail,
 .rating {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -280,6 +285,17 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+.finishDetail {
+  display: block;
+  overflow: hidden;
+  color: #7dff8c;
+  text-overflow: ellipsis;
+}
+
+[data-theme="light"] .finishDetail {
+  color: #1d7d2b;
 }
 
 .rating,
