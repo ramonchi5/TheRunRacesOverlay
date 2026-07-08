@@ -31,9 +31,11 @@ body {
 }
 
 .overlay {
+  --overlay-row-bg: rgba(7, 9, 11, 0.7);
+  --overlay-x-padding: 10px;
   width: min(var(--overlay-width, 390px), calc(100vw - 16px));
   color: #ffffff;
-  background: rgba(7, 9, 11, 0.7);
+  background: transparent;
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -62,7 +64,8 @@ body {
 
 .overlayHeader {
   display: block;
-  padding: 6px 8px 5px;
+  padding: 6px var(--overlay-x-padding) 5px;
+  background: var(--overlay-row-bg);
   border-bottom: 0;
 }
 
@@ -83,6 +86,9 @@ body {
   color: #ffffff;
   font-size: 0.82rem;
   font-weight: 950;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 
 .statusLine {
@@ -102,7 +108,6 @@ body {
 .runnerList {
   display: grid;
   gap: 1px;
-  padding-bottom: 6px;
 }
 
 .runner {
@@ -111,8 +116,8 @@ body {
   align-items: center;
   gap: 6px;
   min-height: 36px;
-  padding: 3px 8px;
-  background: transparent;
+  padding: 3px var(--overlay-x-padding);
+  background: var(--overlay-row-bg);
 }
 
 .overlayPanel .runner {
@@ -132,10 +137,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 24px;
   min-width: 24px;
   height: 24px;
   color: #ffffff;
-  background: transparent;
+  background: rgba(72, 78, 74, 0.5);
   border-radius: 0;
   font-size: 0.8rem;
   font-weight: 950;
@@ -384,14 +390,22 @@ body {
   padding: 4px 0;
 }
 
+.overlay:not(.overlayPanel).isLoading,
+.overlay:not(.overlayPanel).hasError {
+  padding: 4px var(--overlay-x-padding);
+  background: var(--overlay-row-bg);
+}
+
 .overlayPanel.isLoading,
 .overlayPanel.hasError {
   padding: 16px;
 }
 
 .softError {
+  margin-top: 1px;
   padding: 5px 12px 8px;
   color: #f1be55;
+  background: var(--overlay-row-bg);
   font-size: 0.7rem;
   font-weight: 800;
 }
@@ -531,7 +545,7 @@ body {
   .runner {
     grid-template-columns: 26px minmax(0, 1fr) minmax(142px, 40%);
     gap: 6px;
-    padding-inline: 6px;
+    padding-inline: var(--overlay-x-padding);
   }
 
   .runnerStats {

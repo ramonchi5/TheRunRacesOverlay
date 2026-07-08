@@ -14,7 +14,7 @@ Version `1.0.0` is ready for release tagging after final live-race validation.
 - Control page for pasting each new TheRun race URL without changing the OBS source.
 - Runner names, ELO rating changes, current times, split progress, and race deltas.
 - High-resolution default rendering with `zoom=3` for sharper OBS scaling.
-- Transparent page background with a semi-transparent leaderboard panel.
+- Transparent page background with semi-transparent leaderboard bands.
 - Main split comparison that collapses nested split rows into their parent split group.
 - Finished runners ordered by final time, with the fastest finisher as the baseline.
 - Live runners compared only against matching completed split positions.
@@ -125,6 +125,10 @@ After anyone finishes:
 - Positive race deltas use red; negative race deltas use green.
 - Race deltas use the same font size as the current time and sit close to the current time with a fixed gap.
 - Long runner names are clipped so the ELO rating and rating delta stay visible.
+- Runner rows are separated by thin transparent gaps instead of drawn divider lines.
+- Position numbers sit on compact semi-transparent square tiles.
+- The race title is centered and underlined when the title is visible.
+- The row background padding is balanced on both sides, matching the space before the position tile with the space after the current time.
 
 ## Data And Privacy
 
