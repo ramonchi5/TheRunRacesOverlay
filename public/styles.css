@@ -64,7 +64,7 @@ body {
 
 .overlayHeader {
   display: block;
-  padding: 6px var(--overlay-x-padding) 5px;
+  padding: 6px var(--overlay-x-padding) 9px;
   background: var(--overlay-row-bg);
   border-bottom: 0;
 }
@@ -80,15 +80,17 @@ body {
 }
 
 .raceTitle {
+  display: inline-block;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #ffffff;
   font-size: 0.82rem;
   font-weight: 950;
-  text-decoration-line: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
+  line-height: 1.05;
+  padding-bottom: 2px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.92);
 }
 
 .statusLine {

@@ -11,5 +11,6 @@
 - Added high-resolution default rendering for sharper OBS scaling.
 - Tightened the delta/current-time timing column for a more compact default overlay width and narrower width overrides.
 - Added F1-style `3px` row gaps, full-height position lanes, an underlined title, and balanced row padding.
+- Increased title-band bottom padding and made the title underline more visible.
 - Set the default overlay width to `290`.
 - Added MIT license and third-party notices.

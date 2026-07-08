@@ -127,7 +127,7 @@ After anyone finishes:
 - Long runner names are clipped so the ELO rating and rating delta stay visible.
 - Runner rows are separated by `3px` transparent gaps instead of drawn divider lines.
 - Position numbers sit on full-height semi-transparent square lanes.
-- The race title is centered and underlined when the title is visible.
+- The race title is centered, visibly underlined, and given extra bottom padding when the title is visible.
 - The row background padding is balanced on both sides, matching the space before the position tile with the space after the current time.
 
 ## Data And Privacy
