@@ -82,11 +82,12 @@ body {
 .raceTitle {
   display: inline-block;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
   color: #ffffff;
-  font-size: 0.9rem;
+  font-size: var(--title-font-size, 0.86rem);
   font-weight: 950;
   line-height: 1.05;
   text-transform: uppercase;
@@ -108,11 +109,11 @@ body {
 
 .runnerList {
   display: grid;
-  gap: 3px;
+  gap: 2px;
 }
 
 .overlayHeader + .runnerList {
-  margin-top: 3px;
+  margin-top: 2px;
 }
 
 .runner {

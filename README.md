@@ -50,7 +50,13 @@ http://localhost:5179
 
 ## Release Package
 
-The `release/TheRunRacesOverlay-v1.0.0` folder contains the files needed for the `v1.0.0` release package:
+The GitHub release asset is:
+
+```text
+release/TheRunRacesOverlay-v1.0.0.zip
+```
+
+The zip contains:
 
 - `public/`
 - `server.js`
@@ -62,7 +68,7 @@ The `release/TheRunRacesOverlay-v1.0.0` folder contains the files needed for the
 - `LICENSE`
 - `NOTICE.md`
 
-Upload that folder's contents, or zip the folder, for the GitHub release.
+Only `server.js` and `public/` are strictly required at runtime. The start scripts, package metadata, README, changelog, license, and notices are included so the release is easy to run and carries its attribution/licensing context.
 
 ## Set The Race
 
@@ -102,6 +108,8 @@ Use more height for larger races. After setting the Browser Source size, resize 
 ?limit=4                           show only the top 4 runners
 ?width=220                         override the automatic overlay width
 ?zoom=2                            override the default render zoom
+?TitleFontSize=14                  set title size; unitless values are px
+?TitleFontSize=0.86rem             set title size with CSS units
 ?panel=1                           use the old framed panel style
 ?theme=light                       use the light panel theme
 ```
@@ -112,6 +120,7 @@ Defaults:
 poll=1000
 zoom=3
 width=290
+TitleFontSize=0.86rem
 ```
 
 If `width=` is present in the URL, it overrides the automatic width.
@@ -141,9 +150,9 @@ After anyone finishes:
 - Positive race deltas use red; negative race deltas use green.
 - Race deltas use the same font size as the current time and sit close to the current time with a fixed gap.
 - Long runner names are clipped so the ELO rating and rating delta stay visible.
-- Runner rows are separated by `3px` transparent gaps instead of drawn divider lines.
+- Runner rows are separated by `2px` transparent gaps instead of drawn divider lines.
 - Position numbers sit on full-height semi-transparent square lanes.
-- The race title is centered, uppercase, slightly larger, and given extra bottom padding when the title is visible.
+- The race title is centered, uppercase, wraps onto extra lines instead of being abbreviated, and can be resized with `TitleFontSize`.
 - The row background padding is balanced on both sides, matching the space before the position tile with the space after the current time.
 
 ## Data And Privacy

@@ -10,6 +10,10 @@ const defaultOverlayWidth = 290;
 const widthParam = params.get("width");
 const overlayWidth = widthParam ? clamp(Number(widthParam), 120, 2400) : defaultOverlayWidth;
 const renderZoom = clamp(Number(params.get("zoom")) || Number(params.get("scale")) || 3, 1, 4);
+const titleFontSize = normalizeFontSizeParam(
+  getFirstParam(["TitleFontSize", "titleFontSize", "titlefontsize", "title-font-size"]),
+  "0.86rem"
+);
 const isControlPage = window.location.pathname === "/control" || window.location.pathname === "/";
 
 let latestData = null;
@@ -21,6 +25,7 @@ let controlState = null;
 document.documentElement.dataset.theme = theme;
 document.documentElement.style.setProperty("--overlay-width", `${overlayWidth}px`);
 document.documentElement.style.setProperty("--render-zoom", renderZoom);
+document.documentElement.style.setProperty("--title-font-size", titleFontSize);
 
 if (isControlPage) {
   renderControl();
@@ -244,6 +249,32 @@ function isEnabledParam(value, defaultValue) {
   if (["0", "false", "no", "off"].includes(raw)) return false;
   if (["1", "true", "yes", "on"].includes(raw)) return true;
   return defaultValue;
+}
+
+function getFirstParam(names) {
+  for (const name of names) {
+    const value = params.get(name);
+    if (value != null && value !== "") return value;
+  }
+  return "";
+}
+
+function normalizeFontSizeParam(value, fallback) {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+
+  const unitless = raw.match(/^(\d+(?:\.\d+)?)$/);
+  if (unitless) {
+    return `${clamp(Number(unitless[1]), 8, 32)}px`;
+  }
+
+  const withUnit = raw.match(/^(\d+(?:\.\d+)?)(px|rem|em)$/i);
+  if (!withUnit) return fallback;
+
+  const size = Number(withUnit[1]);
+  const unit = withUnit[2].toLowerCase();
+  const clamped = unit === "px" ? clamp(size, 8, 32) : clamp(size, 0.5, 2);
+  return `${clamped}${unit}`;
 }
 
 function clamp(value, min, max) {
