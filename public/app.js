@@ -157,14 +157,15 @@ function renderOverlayShell() {
 
 function renderRunner(runner) {
   const place = normalizePlace(runner.place);
-  const currentTime = runner.currentTime || runner.status || "-";
+  const rawCurrentTime = runner.currentTime || runner.status || "-";
   const latestSplit = runner.latestSplit;
   const splitName = latestSplit?.name || "No split yet";
   const splitTime = latestSplit?.time || "--";
   const percent = runner.percent && runner.percent !== "-" ? runner.percent : latestSplit?.percent || "-";
   const splitDetail = latestSplit ? `${splitTime} at ${splitName}` : "No split yet";
   const isFinished = runner.finalTimeMs != null || /^done$/i.test(runner.status || "");
-  const isAbandoned = /abandoned/i.test(`${runner.status} ${runner.currentTime}`);
+  const isAbandoned = /abandoned/i.test(`${runner.status} ${rawCurrentTime}`);
+  const currentTime = isAbandoned ? "-" : rawCurrentTime;
   const isReady = /^ready$/i.test(runner.status || "") && !latestSplit;
   const isNotReady = /^not ready$/i.test(runner.status || "") && !latestSplit;
   const isPreRaceStatus = isReady || isNotReady;

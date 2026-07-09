@@ -6,7 +6,7 @@ The app runs locally, reads a public TheRun race URL, and renders a small timing
 
 ## Status
 
-Version `1.0.2` is ready for release.
+Version `1.0.3` is ready for release.
 
 ## Features
 
@@ -53,7 +53,7 @@ http://127.0.0.1:5179
 The GitHub release asset is:
 
 ```text
-release/TheRunRacesOverlay-v1.0.2.zip
+release/TheRunRacesOverlay-v1.0.3.zip
 ```
 
 The zip contains:
@@ -146,7 +146,7 @@ After anyone finishes:
 ## Display Rules
 
 - `Finished (confirmed)` and `Finished (waiting for confirmation)` replace split text once a runner finishes.
-- `Abandoned (...)` replaces split text once a runner abandons.
+- `Abandoned (...)` replaces split text once a runner abandons, and abandoned rows show `-` in the timing line.
 - `Ready` and `Not Ready` display before a runner has started and before any split has been completed.
 - Live runners display their current runner timer in the right column.
 - Live runners display their latest completed split below the name as `time at split name`.
