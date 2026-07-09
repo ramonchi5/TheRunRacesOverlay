@@ -233,24 +233,27 @@ function parseRaceHtml(html, raceId, sourceUrl) {
   const runners = [...orderedNames, ...leftovers]
     .map((name) => runnersByName.get(name))
     .filter(Boolean)
-    .map((runner) => ({
-      place: runner.place || "-",
-      username: runner.username,
-      rating: runner.rating || "",
-      ratingDelta: runner.ratingDelta || "",
-      percent: runner.percent || runner.latestSplit?.percent || "-",
-      status: runner.status || inferStatus(runner.currentTime),
-      currentTime: runner.currentTime || normalizeStatusTime(runner.status) || "-",
-      finalTimeMs: runner.finalTimeMs ?? null,
-      abandonedAtMs: runner.abandonedAtMs ?? null,
-      totalSplits: runner.totalSplits ?? null,
-      plannedMainSplitCount: runner.plannedMainSplitCount ?? null,
-      joinOrder: runner.joinOrder ?? null,
-      confirmationStatus: runner.confirmationStatus || "",
-      latestSplit: runner.latestSplit || null,
-      splitProfile: runner.splitProfile || null,
-      splitProfileMainOnly: runner.splitProfileMainOnly || null,
-    }));
+    .map((runner) => {
+      const normalizedRating = normalizeRatingForDisplay(runner);
+      return {
+        place: runner.place || "-",
+        username: runner.username,
+        rating: normalizedRating.rating,
+        ratingDelta: normalizedRating.ratingDelta,
+        percent: runner.percent || runner.latestSplit?.percent || "-",
+        status: runner.status || inferStatus(runner.currentTime),
+        currentTime: runner.currentTime || normalizeStatusTime(runner.status) || "-",
+        finalTimeMs: runner.finalTimeMs ?? null,
+        abandonedAtMs: runner.abandonedAtMs ?? null,
+        totalSplits: runner.totalSplits ?? null,
+        plannedMainSplitCount: runner.plannedMainSplitCount ?? null,
+        joinOrder: runner.joinOrder ?? null,
+        confirmationStatus: runner.confirmationStatus || "",
+        latestSplit: runner.latestSplit || null,
+        splitProfile: runner.splitProfile || null,
+        splitProfileMainOnly: runner.splitProfileMainOnly || null,
+      };
+    });
 
   if (!runners.length) {
     throw new Error("Could not find runners in the therun.gg race page.");
@@ -269,6 +272,22 @@ function parseRaceHtml(html, raceId, sourceUrl) {
     fetchedAt: new Date().toISOString(),
     runners: rankedRunners,
   };
+}
+
+function normalizeRatingForDisplay(runner) {
+  const rating = String(runner.rating || "").trim();
+  const ratingDelta = String(runner.ratingDelta || "").trim();
+  const hasOutcome = isFinishedRunner(runner) || isAbandonedRunner(runner);
+
+  if (hasOutcome) {
+    return { rating, ratingDelta };
+  }
+
+  if (rating === "0" && /^-\d+$/.test(ratingDelta)) {
+    return { rating: ratingDelta.slice(1), ratingDelta: "" };
+  }
+
+  return { rating, ratingDelta: "" };
 }
 
 function needsChatProfileFallback(runners) {
@@ -343,18 +362,21 @@ function parseEmbeddedParticipants(race) {
     const profile = buildSplitProfile(rowsFromSplitPredictions(liveData.splitPredictions || [], liveData.totalSplits));
     const rawFinalTimeMs = numberOrNull(participant.finalTime);
     const currentTimeMs = numberOrNull(liveData.currentTime);
-    const ratingBefore = numberOrNull(participant.ratingBefore);
-    const ratingAfter = numberOrNull(participant.ratingAfter);
-    const ratingDelta = ratingBefore != null && ratingAfter != null ? ratingAfter - ratingBefore : null;
     const abandonedAtMs = getParticipantAbandonedAtMs(participant);
     const isFinished = isEmbeddedFinished(participant, liveData, rawFinalTimeMs);
     const finalTimeMs = isFinished ? rawFinalTimeMs || currentTimeMs || null : null;
     const status = getEmbeddedStatus(participant, isFinished, abandonedAtMs, liveData, profile);
+    const ratingBefore = numberOrNull(participant.ratingBefore);
+    const ratingAfter = numberOrNull(participant.ratingAfter);
+    const hasRatingOutcome = isFinished || abandonedAtMs != null;
+    const hasPostRaceRating = hasRatingOutcome && ratingAfter > 0;
+    const displayRating = hasPostRaceRating ? ratingAfter : ratingBefore > 0 ? ratingBefore : "";
+    const ratingDelta = hasPostRaceRating && ratingBefore > 0 ? ratingAfter - ratingBefore : null;
 
     return {
       place: "",
       username: participant.user || "",
-      rating: ratingAfter != null ? String(ratingAfter) : ratingBefore != null ? String(ratingBefore) : "",
+      rating: displayRating === "" ? "" : String(displayRating),
       ratingDelta: ratingDelta == null ? "" : `${ratingDelta >= 0 ? "+" : ""}${ratingDelta}`,
       percent: getRunnerPercent(liveData, profile, isFinished),
       status,

@@ -149,6 +149,7 @@ After anyone finishes:
 - `Abandoned (...)` replaces split text once a runner abandons.
 - `Ready` and `Not Ready` display before a runner has started and before any split has been completed.
 - Live runners display their latest split as `time at split name`.
+- ELO rating changes are hidden until TheRun reports a real post-race rating.
 - Positive race deltas use red; negative race deltas use green.
 - Race deltas use the same font size as the current time and sit close to the current time with a fixed gap.
 - Long runner names are clipped so the ELO rating and rating delta stay visible.

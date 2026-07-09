@@ -3,6 +3,7 @@
 ## 1.0.2 - 2026-07-09
 
 - Fixed pre-race runners with `0:00` being shown as finished.
+- Fixed pre-race ELO display using `ratingAfter: 0` as a real rating change.
 - Added `Ready` and `Not Ready` display before runners start.
 - Kept live split display on active runners as `time at split name`.
 - Ignored zero-time split predictions so future splits are not treated as completed splits.
