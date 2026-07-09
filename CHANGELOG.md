@@ -2,7 +2,7 @@
 
 ## 1.0.3 - 2026-07-09
 
-- Changed abandoned rows to show only the red `Abandoned` outcome under the runner name and `-` in the timing line.
+- Changed abandoned rows to show only the red `Abandoned` outcome under the runner name and the abandon time in red when available.
 - Added a `release/TheRunRacesOverlay-v1.0.3.zip` package.
 
 ## 1.0.2 - 2026-07-09

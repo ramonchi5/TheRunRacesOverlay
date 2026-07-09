@@ -146,7 +146,7 @@ After anyone finishes:
 ## Display Rules
 
 - `Finished (confirmed)` and `Finished (waiting for confirmation)` replace split text once a runner finishes.
-- `Abandoned (...)` replaces split text once a runner abandons, and abandoned rows show `-` in the timing line.
+- `Abandoned (...)` replaces split text once a runner abandons, and abandoned rows show the abandon time in red when available.
 - `Ready` and `Not Ready` display before a runner has started and before any split has been completed.
 - Live runners display their current runner timer in the right column.
 - Live runners display their latest completed split below the name as `time at split name`.

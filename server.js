@@ -363,9 +363,10 @@ function parseEmbeddedParticipants(race) {
     const rawFinalTimeMs = numberOrNull(participant.finalTime);
     const currentTimeMs = numberOrNull(liveData.currentTime);
     const abandonedAtMs = getParticipantAbandonedAtMs(participant);
+    const abandonedRaceTimeMs = getParticipantAbandonedRaceTimeMs(participant, liveData, abandonedAtMs);
     const isFinished = isEmbeddedFinished(participant, liveData, rawFinalTimeMs);
     const finalTimeMs = isFinished ? rawFinalTimeMs || currentTimeMs || null : null;
-    const displayTimeMs = isFinished ? finalTimeMs : null;
+    const displayTimeMs = isFinished ? finalTimeMs : abandonedRaceTimeMs;
     const status = getEmbeddedStatus(participant, isFinished, abandonedAtMs, liveData, profile);
     const ratingBefore = numberOrNull(participant.ratingBefore);
     const ratingAfter = numberOrNull(participant.ratingAfter);
@@ -457,6 +458,27 @@ function getConfirmationStatus(participant, race, isFinished, isAbandoned) {
 
 function getParticipantAbandonedAtMs(participant) {
   return dateToMillis(participant.abandondedAtDate || participant.abandonedAtDate || participant.forfeitedAtDate);
+}
+
+function getParticipantAbandonedRaceTimeMs(participant, liveData, abandonedAtMs) {
+  const explicitValue = participant.abandonedTime || participant.abandondedTime || participant.forfeitedTime;
+  const explicitTime = timeToMillis(explicitValue);
+  if (explicitTime != null) return explicitTime;
+  const explicitMs = numberOrNull(explicitValue);
+  if (explicitMs != null && explicitMs >= 0) return explicitMs;
+
+  const startedAtMs = getLiveDataStartedAtMs(liveData);
+  if (abandonedAtMs == null || startedAtMs == null) return null;
+
+  const elapsedMs = abandonedAtMs - startedAtMs;
+  const maxReasonableRaceMs = 72 * 60 * 60 * 1000;
+  return elapsedMs >= 0 && elapsedMs <= maxReasonableRaceMs ? elapsedMs : null;
+}
+
+function getLiveDataStartedAtMs(liveData) {
+  const numericStartedAt = numberOrNull(liveData?.startedAt);
+  if (numericStartedAt != null) return numericStartedAt;
+  return dateToMillis(liveData?.startedAt);
 }
 
 function getRunnerPercent(liveData, profile, isFinished) {

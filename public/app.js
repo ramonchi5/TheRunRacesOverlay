@@ -165,7 +165,8 @@ function renderRunner(runner) {
   const splitDetail = latestSplit ? `${splitTime} at ${splitName}` : "No split yet";
   const isFinished = runner.finalTimeMs != null || /^done$/i.test(runner.status || "");
   const isAbandoned = /abandoned/i.test(`${runner.status} ${rawCurrentTime}`);
-  const currentTime = isAbandoned ? "-" : rawCurrentTime;
+  const currentTime = isAbandoned && !isTimerText(rawCurrentTime) ? "-" : rawCurrentTime;
+  const currentTimeClass = isAbandoned && currentTime !== "-" ? " isAbandoned" : "";
   const isReady = /^ready$/i.test(runner.status || "") && !latestSplit;
   const isNotReady = /^not ready$/i.test(runner.status || "") && !latestSplit;
   const isPreRaceStatus = isReady || isNotReady;
@@ -219,7 +220,7 @@ function renderRunner(runner) {
       <div class="runnerStats">
         <div class="timingLine">
           <div class="raceDelta ${deltaClass}">${escapeHtml(deltaLabel)}</div>
-          <span class="currentTime">${escapeHtml(currentTime)}</span>
+          <span class="currentTime${currentTimeClass}">${escapeHtml(currentTime)}</span>
         </div>
       </div>
     </article>
@@ -253,6 +254,10 @@ function normalizePlace(value) {
   const clean = String(value || "-").replace(/\.$/, "").trim();
   if (!clean || clean === "-") return "-";
   return clean.startsWith("#") ? clean : `#${clean}`;
+}
+
+function isTimerText(value) {
+  return /^\d+(?::\d{2}){1,2}$/.test(String(value || "").trim());
 }
 
 function isEnabledParam(value, defaultValue) {

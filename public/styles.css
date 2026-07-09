@@ -253,6 +253,14 @@ body {
   color: #111812;
 }
 
+.currentTime.isAbandoned {
+  color: #ff6f6f;
+}
+
+[data-theme="light"] .currentTime.isAbandoned {
+  color: #b73737;
+}
+
 .splitMeta {
   color: #f1f4f0;
   font-size: 0.72rem;
