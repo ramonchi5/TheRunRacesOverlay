@@ -3,6 +3,7 @@
 ## 1.0.3 - 2026-07-09
 
 - Changed abandoned rows to show only the red `Abandoned` outcome under the runner name and the abandon time in red when available.
+- Extracted abandon times from TheRun's visible `Abandoned - time` card text when embedded live data is unavailable.
 - Removed the title background band so the title sits visually separate from runner rows.
 - Added a `release/TheRunRacesOverlay-v1.0.3.zip` package.
 

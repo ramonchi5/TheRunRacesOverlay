@@ -235,14 +235,16 @@ function parseRaceHtml(html, raceId, sourceUrl) {
     .filter(Boolean)
     .map((runner) => {
       const normalizedRating = normalizeRatingForDisplay(runner);
+      const status = runner.status || inferStatus(runner.currentTime);
+      const currentTime = normalizeCurrentTimeForDisplay(runner.currentTime, status);
       return {
         place: runner.place || "-",
         username: runner.username,
         rating: normalizedRating.rating,
         ratingDelta: normalizedRating.ratingDelta,
         percent: runner.percent || runner.latestSplit?.percent || "-",
-        status: runner.status || inferStatus(runner.currentTime),
-        currentTime: runner.currentTime || normalizeStatusTime(runner.status) || "-",
+        status,
+        currentTime: currentTime || normalizeStatusTime(status) || "-",
         finalTimeMs: runner.finalTimeMs ?? null,
         abandonedAtMs: runner.abandonedAtMs ?? null,
         totalSplits: runner.totalSplits ?? null,
@@ -1024,6 +1026,19 @@ function inferStatus(currentTime) {
 function normalizeStatusTime(status) {
   if (!status) return "";
   return isStatusWord(status) ? status : "";
+}
+
+function normalizeCurrentTimeForDisplay(currentTime, status) {
+  const clean = cleanTimeText(currentTime);
+  if (/abandoned|forfeit|dnf/i.test(`${status || ""} ${clean}`)) {
+    return extractTimeText(clean) || clean;
+  }
+  return clean;
+}
+
+function extractTimeText(value) {
+  const match = String(value || "").match(/(\d+:)?\d{1,2}:\d{2}(?:\.\d+)?/);
+  return match ? shortTime(match[0]) : "";
 }
 
 function isStatusWord(value) {

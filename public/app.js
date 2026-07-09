@@ -165,7 +165,8 @@ function renderRunner(runner) {
   const splitDetail = latestSplit ? `${splitTime} at ${splitName}` : "No split yet";
   const isFinished = runner.finalTimeMs != null || /^done$/i.test(runner.status || "");
   const isAbandoned = /abandoned/i.test(`${runner.status} ${rawCurrentTime}`);
-  const currentTime = isAbandoned && !isTimerText(rawCurrentTime) ? "-" : rawCurrentTime;
+  const abandonedTimer = isAbandoned ? getTimerText(rawCurrentTime) : "";
+  const currentTime = isAbandoned ? abandonedTimer || "-" : rawCurrentTime;
   const currentTimeClass = isAbandoned && currentTime !== "-" ? " isAbandoned" : "";
   const isReady = /^ready$/i.test(runner.status || "") && !latestSplit;
   const isNotReady = /^not ready$/i.test(runner.status || "") && !latestSplit;
@@ -256,8 +257,11 @@ function normalizePlace(value) {
   return clean.startsWith("#") ? clean : `#${clean}`;
 }
 
-function isTimerText(value) {
-  return /^\d+(?::\d{2}){1,2}$/.test(String(value || "").trim());
+function getTimerText(value) {
+  const match = String(value || "")
+    .trim()
+    .match(/(\d+:)?\d{1,2}:\d{2}(?:\.\d+)?/);
+  return match ? match[0].replace(/\.\d+$/, "") : "";
 }
 
 function isEnabledParam(value, defaultValue) {
