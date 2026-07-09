@@ -365,6 +365,7 @@ function parseEmbeddedParticipants(race) {
     const abandonedAtMs = getParticipantAbandonedAtMs(participant);
     const isFinished = isEmbeddedFinished(participant, liveData, rawFinalTimeMs);
     const finalTimeMs = isFinished ? rawFinalTimeMs || currentTimeMs || null : null;
+    const displayTimeMs = isFinished ? finalTimeMs : null;
     const status = getEmbeddedStatus(participant, isFinished, abandonedAtMs, liveData, profile);
     const ratingBefore = numberOrNull(participant.ratingBefore);
     const ratingAfter = numberOrNull(participant.ratingAfter);
@@ -380,7 +381,7 @@ function parseEmbeddedParticipants(race) {
       ratingDelta: ratingDelta == null ? "" : `${ratingDelta >= 0 ? "+" : ""}${ratingDelta}`,
       percent: getRunnerPercent(liveData, profile, isFinished),
       status,
-      currentTime: (currentTimeMs ?? finalTimeMs) != null ? millisToTime(currentTimeMs ?? finalTimeMs) : "",
+      currentTime: displayTimeMs != null ? millisToTime(displayTimeMs) : "",
       finalTimeMs,
       abandonedAtMs,
       totalSplits: numberOrNull(liveData.totalSplits),

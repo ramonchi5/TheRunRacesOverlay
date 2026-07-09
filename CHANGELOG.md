@@ -7,6 +7,7 @@
 - Changed documented local URLs from `localhost` to `127.0.0.1` to avoid slow localhost resolution on some Windows setups.
 - Added `Ready` and `Not Ready` display before runners start.
 - Kept live split display on active runners as `time at split name`.
+- Kept the right-side timer column on the live runner timer instead of the latest split time.
 - Ignored zero-time split predictions so future splits are not treated as completed splits.
 - Added a `release/TheRunRacesOverlay-v1.0.2.zip` package.
 
