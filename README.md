@@ -150,7 +150,7 @@ After anyone finishes:
 - Positive race deltas use red; negative race deltas use green.
 - Race deltas use the same font size as the current time and sit close to the current time with a fixed gap.
 - Long runner names are clipped so the ELO rating and rating delta stay visible.
-- Runner rows are separated by `1px` transparent gaps instead of drawn divider lines.
+- Runner rows are separated by `1.5px` transparent gaps instead of drawn divider lines.
 - Position numbers sit on full-height semi-transparent square lanes.
 - The race title is centered, uppercase, wraps onto extra lines instead of being abbreviated, and can be resized with `TitleFontSize`.
 - The row background padding is balanced on both sides, matching the space before the position tile with the space after the current time.

@@ -109,11 +109,11 @@ body {
 
 .runnerList {
   display: grid;
-  gap: 1px;
+  gap: 1.5px;
 }
 
 .overlayHeader + .runnerList {
-  margin-top: 1px;
+  margin-top: 1.5px;
 }
 
 .runner {
