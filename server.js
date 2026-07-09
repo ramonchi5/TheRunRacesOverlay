@@ -7,7 +7,7 @@ const { URL } = require("node:url");
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
 const STATE_FILE = path.join(ROOT, ".overlay-state.json");
-const APP_VERSION = "1.0.3";
+const APP_VERSION = "1.0.4";
 const DEFAULT_PORT = 5179;
 const CACHE_TTL_MS = 750;
 const MAX_RESPONSE_BYTES = 6 * 1024 * 1024;
@@ -235,8 +235,9 @@ function parseRaceHtml(html, raceId, sourceUrl) {
     .filter(Boolean)
     .map((runner) => {
       const normalizedRating = normalizeRatingForDisplay(runner);
-      const status = runner.status || inferStatus(runner.currentTime);
-      const currentTime = normalizeCurrentTimeForDisplay(runner.currentTime, status);
+      const isDisqualified = isDisqualifiedRunner(runner);
+      const status = isDisqualified ? "Abandoned" : runner.status || inferStatus(runner.currentTime);
+      const currentTime = isDisqualified ? "DSQ" : normalizeCurrentTimeForDisplay(runner.currentTime, status);
       return {
         place: runner.place || "-",
         username: runner.username,
@@ -245,6 +246,7 @@ function parseRaceHtml(html, raceId, sourceUrl) {
         percent: runner.percent || runner.latestSplit?.percent || "-",
         status,
         currentTime: currentTime || normalizeStatusTime(status) || "-",
+        isDisqualified,
         finalTimeMs: runner.finalTimeMs ?? null,
         abandonedAtMs: runner.abandonedAtMs ?? null,
         totalSplits: runner.totalSplits ?? null,
@@ -366,6 +368,7 @@ function parseEmbeddedParticipants(race) {
     const currentTimeMs = numberOrNull(liveData.currentTime);
     const abandonedAtMs = getParticipantAbandonedAtMs(participant);
     const abandonedRaceTimeMs = getParticipantAbandonedRaceTimeMs(participant, liveData, abandonedAtMs);
+    const isDisqualified = Boolean(participant.disqualified);
     const isFinished = isEmbeddedFinished(participant, liveData, rawFinalTimeMs);
     const finalTimeMs = isFinished ? rawFinalTimeMs || currentTimeMs || null : null;
     const displayTimeMs = isFinished ? finalTimeMs : abandonedRaceTimeMs;
@@ -385,12 +388,13 @@ function parseEmbeddedParticipants(race) {
       percent: getRunnerPercent(liveData, profile, isFinished),
       status,
       currentTime: displayTimeMs != null ? millisToTime(displayTimeMs) : "",
+      isDisqualified,
       finalTimeMs,
       abandonedAtMs,
       totalSplits: numberOrNull(liveData.totalSplits),
       plannedMainSplitCount: getReliableMainSplitCount({ finalTimeMs, status }, profile),
       joinOrder: index,
-      confirmationStatus: getConfirmationStatus(participant, race, isFinished, abandonedAtMs != null),
+      confirmationStatus: getConfirmationStatus(participant, race, isFinished),
       latestSplit: profile.units.at(-1) || null,
       splitProfile: profile,
       splitProfileMainOnly: profile,
@@ -437,8 +441,8 @@ function isEmbeddedFinished(participant, liveData, rawFinalTimeMs) {
 
 function getEmbeddedStatus(participant, isFinished, abandonedAtMs, liveData, profile) {
   const status = String(participant.status || "").trim().toLowerCase();
+  if (participant.disqualified) return "Abandoned";
   if (abandonedAtMs != null || /abandoned/i.test(participant.status || "")) return "Abandoned";
-  if (participant.disqualified) return "DNF";
   if (isFinished) return "Done";
   if (status === "ready") return "Ready";
   if (status === "racing" || status === "running" || status === "started") return "Racing";
@@ -452,8 +456,8 @@ function hasRunActivity(liveData, profile) {
   return currentTime > 0 || progress > 0 || Boolean(profile?.units?.length);
 }
 
-function getConfirmationStatus(participant, race, isFinished, isAbandoned) {
-  if (!isFinished && !isAbandoned) return "";
+function getConfirmationStatus(participant, race, isFinished) {
+  if (!isFinished) return "";
   if (participant.confirmedAtDate || participant.status === "confirmed" || race.autoConfirm) return "confirmed";
   return "waiting for confirmation";
 }
@@ -512,6 +516,7 @@ function parseStandings(html) {
       const statusCell = cells[4] || "";
       const statusText = cleanTimeText(textFromHtml(statusCell));
       const statusTitle = statusCell.match(/<abbr[^>]+title="([^"]+)"/i)?.[1];
+      const isDisqualified = /disqual/i.test(`${statusText} ${statusTitle || ""}`);
 
       return {
         place: normalizePlace(textFromHtml(cells[0] || "")),
@@ -521,6 +526,7 @@ function parseStandings(html) {
         percent: textFromHtml(cells[3] || ""),
         status: isStatusWord(statusText) ? statusText : "",
         currentTime: statusTitle ? shortTime(statusTitle) : statusText,
+        isDisqualified,
         finalTimeMs: statusTitle && !isStatusWord(statusText) ? timeToMillis(statusTitle) : null,
       };
     })
@@ -551,6 +557,7 @@ function parseParticipantCards(html) {
     const timerHtml = timerMatch?.[1] || "";
     const timerTitle = timerHtml.match(/<abbr[^>]+title="([^"]+)"/i)?.[1];
     const currentTime = cleanTimeText(textFromHtml(timerHtml));
+    const isDisqualified = /disqual/i.test(`${status} ${currentTime} ${metaText}`);
     const abandonedAtMs = /^abandoned$/i.test(status) ? timeToMillis(timerTitle || currentTime) : null;
     const liveDataText = textFromHtml(segment);
     const totalSplits = Number(liveDataText.match(/\b\d+\s*\/\s*(\d+)\s*-/)?.[1]) || null;
@@ -562,6 +569,7 @@ function parseParticipantCards(html) {
       ratingDelta: parsedRating?.[2] || "",
       status,
       currentTime,
+      isDisqualified,
       finalTimeMs: /^done$/i.test(status) ? timeToMillis(timerTitle || currentTime) : null,
       abandonedAtMs,
       totalSplits,
@@ -763,14 +771,18 @@ function applyRaceComparisons(runners) {
       isComparisonBaseline: false,
     };
   });
-  const abandonedRunners = runnersWithKeys.filter(isAbandonedRunner).sort(compareAbandonedPlacement);
-  const contenders = runnersWithKeys.filter((runner) => !isAbandonedRunner(runner));
+  const disqualifiedRunners = runnersWithKeys.filter(isDisqualifiedRunner).sort(compareDisqualifiedPlacement);
+  const nonDisqualifiedRunners = runnersWithKeys.filter((runner) => !isDisqualifiedRunner(runner));
+  const abandonedRunners = nonDisqualifiedRunners.filter(isAbandonedRunner).sort(compareAbandonedPlacement);
+  const contenders = nonDisqualifiedRunners.filter((runner) => !isAbandonedRunner(runner));
 
   const finishedCandidates = contenders.filter((runner) => !isDnfRunner(runner) && runner.finalTimeMs != null);
-  if (finishedCandidates.length) return applyFinishedComparisons(contenders, finishedCandidates, abandonedRunners);
+  if (finishedCandidates.length) {
+    return applyFinishedComparisons(contenders, finishedCandidates, abandonedRunners, disqualifiedRunners);
+  }
 
   const primaryKey = choosePrimaryComparisonKey(contenders);
-  if (!primaryKey) return applyFinishedFallbackPlaces(contenders, abandonedRunners);
+  if (!primaryKey) return applyFinishedFallbackPlaces(contenders, abandonedRunners, disqualifiedRunners);
 
   const comparable = contenders.filter(
     (runner) => isComparableWithPrimaryKey(runner, primaryKey) && runner.splitProfile?.units?.length
@@ -806,10 +818,10 @@ function applyRaceComparisons(runners) {
       };
     });
 
-  return appendAbandonedPlaces([...rankedWithPlaces, ...bottomRunners], abandonedRunners).map(stripInternalRunnerFields);
+  return appendOutcomePlaces([...rankedWithPlaces, ...bottomRunners], abandonedRunners, disqualifiedRunners).map(stripInternalRunnerFields);
 }
 
-function applyFinishedComparisons(runners, finishedCandidates, abandonedRunners = []) {
+function applyFinishedComparisons(runners, finishedCandidates, abandonedRunners = [], disqualifiedRunners = []) {
   const finished = finishedCandidates.slice().sort((a, b) => (a.finalTimeMs ?? Infinity) - (b.finalTimeMs ?? Infinity));
   const baseline = finished[0] || null;
   const finishedNames = new Set(finished.map((runner) => runner.username));
@@ -857,12 +869,12 @@ function applyFinishedComparisons(runners, finishedCandidates, abandonedRunners 
       isComparisonBaseline: false,
     }));
 
-  return appendAbandonedPlaces([...rankedFinished, ...rankedActive, ...rankedDnf], abandonedRunners).map(stripInternalRunnerFields);
+  return appendOutcomePlaces([...rankedFinished, ...rankedActive, ...rankedDnf], abandonedRunners, disqualifiedRunners).map(stripInternalRunnerFields);
 }
 
-function applyFinishedFallbackPlaces(runners, abandonedRunners = []) {
+function applyFinishedFallbackPlaces(runners, abandonedRunners = [], disqualifiedRunners = []) {
   if (!runners.some((runner) => isFinishedRunner(runner) && runner.finalTimeMs != null)) {
-    return appendAbandonedPlaces(runners, abandonedRunners).map(stripInternalRunnerFields);
+    return appendOutcomePlaces(runners, abandonedRunners, disqualifiedRunners).map(stripInternalRunnerFields);
   }
 
   let fallbackPlace = 0;
@@ -878,7 +890,11 @@ function applyFinishedFallbackPlaces(runners, abandonedRunners = []) {
       };
     });
 
-  return appendAbandonedPlaces(rankedRunners, abandonedRunners).map(stripInternalRunnerFields);
+  return appendOutcomePlaces(rankedRunners, abandonedRunners, disqualifiedRunners).map(stripInternalRunnerFields);
+}
+
+function appendOutcomePlaces(rankedRunners, abandonedRunners = [], disqualifiedRunners = []) {
+  return appendDisqualifiedPlaces(appendAbandonedPlaces(rankedRunners, abandonedRunners), disqualifiedRunners);
 }
 
 function appendAbandonedPlaces(rankedRunners, abandonedRunners = []) {
@@ -896,6 +912,21 @@ function appendAbandonedPlaces(rankedRunners, abandonedRunners = []) {
     isComparisonBaseline: false,
   }));
   return [...rankedRunners, ...rankedAbandoned];
+}
+
+function appendDisqualifiedPlaces(rankedRunners, disqualifiedRunners = []) {
+  const rankedDisqualified = disqualifiedRunners.map((runner) => ({
+    ...runner,
+    place: "#-",
+    status: "Abandoned",
+    currentTime: "DSQ",
+    confirmationStatus: "",
+    raceDelta: null,
+    raceDeltaMs: null,
+    isComparisonBaseline: false,
+    isDisqualified: true,
+  }));
+  return [...rankedRunners, ...rankedDisqualified];
 }
 
 function getComparisonStructureKey(runner, profile) {
@@ -971,11 +1002,11 @@ function isFinishedRunner(runner) {
 }
 
 function isDnfRunner(runner) {
-  return /dnf|abandoned|forfeit/i.test(`${runner.status || ""} ${runner.currentTime || ""}`);
+  return isDisqualifiedRunner(runner) || /dnf|abandoned|forfeit/i.test(`${runner.status || ""} ${runner.currentTime || ""}`);
 }
 
 function isAbandonedRunner(runner) {
-  return runner.abandonedAtMs != null || /abandoned/i.test(`${runner.status || ""} ${runner.currentTime || ""}`);
+  return !isDisqualifiedRunner(runner) && (runner.abandonedAtMs != null || /abandoned/i.test(`${runner.status || ""} ${runner.currentTime || ""}`));
 }
 
 function compareAbandonedPlacement(a, b) {
@@ -983,6 +1014,14 @@ function compareAbandonedPlacement(a, b) {
   const bTime = b.abandonedAtMs ?? timeToMillis(b.currentTime) ?? Number.NEGATIVE_INFINITY;
   if (aTime !== bTime) return bTime - aTime;
   return a.originalIndex - b.originalIndex;
+}
+
+function isDisqualifiedRunner(runner) {
+  return runner.isDisqualified === true || /disqual|dsq/i.test(`${runner.status || ""} ${runner.currentTime || ""}`);
+}
+
+function compareDisqualifiedPlacement(a, b) {
+  return (a.originalIndex ?? 0) - (b.originalIndex ?? 0);
 }
 
 function getReliableMainSplitCount(runner, profile) {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.4 - 2026-07-09
+
+- Removed confirmation text from abandoned rows.
+- Added disqualification handling: DSQ rows show red `Abandoned`, red `DSQ`, use `#-`, and sit below abandoned runners.
+- Added a `release/TheRunRacesOverlay-v1.0.4.zip` package.
+
 ## 1.0.3 - 2026-07-09
 
 - Changed abandoned rows to show only the red `Abandoned` outcome under the runner name and the abandon time in red when available.

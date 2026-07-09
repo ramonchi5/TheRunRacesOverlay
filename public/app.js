@@ -164,15 +164,16 @@ function renderRunner(runner) {
   const percent = runner.percent && runner.percent !== "-" ? runner.percent : latestSplit?.percent || "-";
   const splitDetail = latestSplit ? `${splitTime} at ${splitName}` : "No split yet";
   const isFinished = runner.finalTimeMs != null || /^done$/i.test(runner.status || "");
-  const isAbandoned = /abandoned/i.test(`${runner.status} ${rawCurrentTime}`);
+  const isDisqualified = runner.isDisqualified === true || /disqual|dsq/i.test(`${runner.status} ${rawCurrentTime}`);
+  const isAbandoned = isDisqualified || /abandoned/i.test(`${runner.status} ${rawCurrentTime}`);
   const abandonedTimer = isAbandoned ? getTimerText(rawCurrentTime) : "";
-  const currentTime = isAbandoned ? abandonedTimer || "-" : rawCurrentTime;
+  const currentTime = isDisqualified ? "DSQ" : isAbandoned ? abandonedTimer || "-" : rawCurrentTime;
   const currentTimeClass = isAbandoned && currentTime !== "-" ? " isAbandoned" : "";
   const isReady = /^ready$/i.test(runner.status || "") && !latestSplit;
   const isNotReady = /^not ready$/i.test(runner.status || "") && !latestSplit;
   const isPreRaceStatus = isReady || isNotReady;
   const confirmation = runner.confirmationStatus === "confirmed" ? "confirmed" : "waiting for confirmation";
-  const isDnf = /dnf|abandoned|forfeit/i.test(`${runner.status} ${runner.currentTime}`);
+  const isDnf = isDisqualified || /dnf|abandoned|forfeit/i.test(`${runner.status} ${runner.currentTime}`);
   const ratingDelta = runner.ratingDelta
     ? `<span class="runnerRatingDelta ${runner.ratingDelta.startsWith("-") ? "down" : "up"}">${escapeHtml(
         runner.ratingDelta
@@ -209,7 +210,7 @@ function renderRunner(runner) {
                           : "isNotReady"
                         : "isFinished"
                   }">${escapeHtml(isAbandoned ? "Abandoned" : isPreRaceStatus ? runner.status : "Finished")}</span>
-                  ${isPreRaceStatus ? "" : `<span class="outcomeConfirmation">(${escapeHtml(confirmation)})</span>`}
+                  ${isPreRaceStatus || isAbandoned ? "" : `<span class="outcomeConfirmation">(${escapeHtml(confirmation)})</span>`}
                 </span>
               </span>`
             : `<span class="splitMeta">
