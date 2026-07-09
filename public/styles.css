@@ -312,6 +312,11 @@ body {
   color: #7dff8c;
 }
 
+.outcomeLabel.isReady {
+  color: #7dff8c;
+}
+
+.outcomeLabel.isNotReady,
 .outcomeLabel.isAbandoned {
   color: #ff6f6f;
 }
@@ -324,6 +329,11 @@ body {
   color: #1d7d2b;
 }
 
+[data-theme="light"] .outcomeLabel.isReady {
+  color: #1d7d2b;
+}
+
+[data-theme="light"] .outcomeLabel.isNotReady,
 [data-theme="light"] .outcomeLabel.isAbandoned {
   color: #b73737;
 }

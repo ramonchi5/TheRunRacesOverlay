@@ -165,6 +165,9 @@ function renderRunner(runner) {
   const splitDetail = latestSplit ? `${splitTime} at ${splitName}` : "No split yet";
   const isFinished = runner.finalTimeMs != null || /^done$/i.test(runner.status || "");
   const isAbandoned = /abandoned/i.test(`${runner.status} ${runner.currentTime}`);
+  const isReady = /^ready$/i.test(runner.status || "") && !latestSplit;
+  const isNotReady = /^not ready$/i.test(runner.status || "") && !latestSplit;
+  const isPreRaceStatus = isReady || isNotReady;
   const confirmation = runner.confirmationStatus === "confirmed" ? "confirmed" : "waiting for confirmation";
   const isDnf = /dnf|abandoned|forfeit/i.test(`${runner.status} ${runner.currentTime}`);
   const ratingDelta = runner.ratingDelta
@@ -191,11 +194,19 @@ function renderRunner(runner) {
           ${rating}
         </span>
         ${
-          isAbandoned || isFinished
+          isAbandoned || isFinished || isPreRaceStatus
             ? `<span class="splitMeta isOutcome">
                 <span class="outcomeDetail">
-                  <span class="outcomeLabel ${isAbandoned ? "isAbandoned" : "isFinished"}">${isAbandoned ? "Abandoned" : "Finished"}</span>
-                  <span class="outcomeConfirmation">(${escapeHtml(confirmation)})</span>
+                  <span class="outcomeLabel ${
+                    isAbandoned
+                      ? "isAbandoned"
+                      : isPreRaceStatus
+                        ? isReady
+                          ? "isReady"
+                          : "isNotReady"
+                        : "isFinished"
+                  }">${escapeHtml(isAbandoned ? "Abandoned" : isPreRaceStatus ? runner.status : "Finished")}</span>
+                  ${isPreRaceStatus ? "" : `<span class="outcomeConfirmation">(${escapeHtml(confirmation)})</span>`}
                 </span>
               </span>`
             : `<span class="splitMeta">

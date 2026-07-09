@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.2 - 2026-07-09
+
+- Fixed pre-race runners with `0:00` being shown as finished.
+- Added `Ready` and `Not Ready` display before runners start.
+- Kept live split display on active runners as `time at split name`.
+- Ignored zero-time split predictions so future splits are not treated as completed splits.
+- Added a `release/TheRunRacesOverlay-v1.0.2.zip` package.
+
 ## 1.0.0 - 2026-07-08
 
 - Added a local OBS Browser Source overlay for therun.gg races.

@@ -7,7 +7,7 @@ const { URL } = require("node:url");
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
 const STATE_FILE = path.join(ROOT, ".overlay-state.json");
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.0.2";
 const DEFAULT_PORT = 5179;
 const CACHE_TTL_MS = 750;
 const MAX_RESPONSE_BYTES = 6 * 1024 * 1024;
@@ -341,14 +341,15 @@ function parseEmbeddedParticipants(race) {
   return race.participants.map((participant, index) => {
     const liveData = participant.liveData || {};
     const profile = buildSplitProfile(rowsFromSplitPredictions(liveData.splitPredictions || [], liveData.totalSplits));
-    const finalTimeMs = numberOrNull(participant.finalTime) ?? (liveData.runFinished ? numberOrNull(liveData.currentTime) : null);
-    const currentTimeMs = numberOrNull(liveData.currentTime) ?? finalTimeMs;
+    const rawFinalTimeMs = numberOrNull(participant.finalTime);
+    const currentTimeMs = numberOrNull(liveData.currentTime);
     const ratingBefore = numberOrNull(participant.ratingBefore);
     const ratingAfter = numberOrNull(participant.ratingAfter);
     const ratingDelta = ratingBefore != null && ratingAfter != null ? ratingAfter - ratingBefore : null;
-    const isFinished = finalTimeMs != null || liveData.runFinished;
     const abandonedAtMs = getParticipantAbandonedAtMs(participant);
-    const status = getEmbeddedStatus(participant, isFinished, abandonedAtMs);
+    const isFinished = isEmbeddedFinished(participant, liveData, rawFinalTimeMs);
+    const finalTimeMs = isFinished ? rawFinalTimeMs || currentTimeMs || null : null;
+    const status = getEmbeddedStatus(participant, isFinished, abandonedAtMs, liveData, profile);
 
     return {
       place: "",
@@ -357,13 +358,13 @@ function parseEmbeddedParticipants(race) {
       ratingDelta: ratingDelta == null ? "" : `${ratingDelta >= 0 ? "+" : ""}${ratingDelta}`,
       percent: getRunnerPercent(liveData, profile, isFinished),
       status,
-      currentTime: currentTimeMs != null ? millisToTime(currentTimeMs) : "",
+      currentTime: (currentTimeMs ?? finalTimeMs) != null ? millisToTime(currentTimeMs ?? finalTimeMs) : "",
       finalTimeMs,
       abandonedAtMs,
       totalSplits: numberOrNull(liveData.totalSplits),
       plannedMainSplitCount: getReliableMainSplitCount({ finalTimeMs, status }, profile),
       joinOrder: index,
-      confirmationStatus: getConfirmationStatus(participant, race),
+      confirmationStatus: getConfirmationStatus(participant, race, isFinished, abandonedAtMs != null),
       latestSplit: profile.units.at(-1) || null,
       splitProfile: profile,
       splitProfileMainOnly: profile,
@@ -377,7 +378,7 @@ function rowsFromSplitPredictions(predictions, totalSplits) {
     const splitIndex = numberOrNull(prediction.splitIndex);
     const currentTime = numberOrNull(prediction.currentTime);
     const splitName = String(prediction.splitName || "").trim();
-    if (splitIndex == null || currentTime == null || !splitName) continue;
+    if (splitIndex == null || currentTime == null || currentTime <= 0 || !splitName) continue;
     byIndex.set(splitIndex, prediction);
   }
 
@@ -398,19 +399,37 @@ function rowsFromSplitPredictions(predictions, totalSplits) {
     });
 }
 
-function getEmbeddedStatus(participant, isFinished, abandonedAtMs) {
+function isEmbeddedFinished(participant, liveData, rawFinalTimeMs) {
+  const status = String(participant.status || "").trim().toLowerCase();
+  return (
+    liveData.runFinished === true ||
+    rawFinalTimeMs > 0 ||
+    Boolean(participant.confirmedAtDate) ||
+    ["done", "finished", "confirmed"].includes(status)
+  );
+}
+
+function getEmbeddedStatus(participant, isFinished, abandonedAtMs, liveData, profile) {
+  const status = String(participant.status || "").trim().toLowerCase();
   if (abandonedAtMs != null || /abandoned/i.test(participant.status || "")) return "Abandoned";
   if (participant.disqualified) return "DNF";
   if (isFinished) return "Done";
-  return participant.status === "ready" ? "Ready" : "Racing";
+  if (status === "ready") return "Ready";
+  if (status === "racing" || status === "running" || status === "started") return "Racing";
+  if (hasRunActivity(liveData, profile)) return "Racing";
+  return "Not Ready";
 }
 
-function getConfirmationStatus(participant, race) {
+function hasRunActivity(liveData, profile) {
+  const currentTime = numberOrNull(liveData.currentTime);
+  const progress = numberOrNull(liveData.runPercentageSplits);
+  return currentTime > 0 || progress > 0 || Boolean(profile?.units?.length);
+}
+
+function getConfirmationStatus(participant, race, isFinished, isAbandoned) {
+  if (!isFinished && !isAbandoned) return "";
   if (participant.confirmedAtDate || participant.status === "confirmed" || race.autoConfirm) return "confirmed";
-  if (participant.finalTime != null || participant.liveData?.runFinished || getParticipantAbandonedAtMs(participant) != null) {
-    return "waiting for confirmation";
-  }
-  return "";
+  return "waiting for confirmation";
 }
 
 function getParticipantAbandonedAtMs(participant) {
@@ -478,7 +497,7 @@ function parseParticipantCards(html) {
     const timerMatch = segment.match(/timerDisplay[^>]*>([\s\S]*?)<\/span>\s*<hr/i);
     const metaMatch = segment.match(/participantMeta[^>]*>([\s\S]*?)<\/div>\s*<hr/i);
     const metaText = textFromHtml(metaMatch?.[1] || "");
-    const status = metaText.match(/(Done|DNF|Ready|Racing|Forfeit|Forfeited|Abandoned)$/i)?.[1] || "";
+    const status = metaText.match(/(Done|DNF|Not Ready|Ready|Racing|Forfeit|Forfeited|Abandoned)$/i)?.[1] || "";
 
     const ratingText = textFromHtml(ratingMatch?.[1] || "");
     const parsedRating = ratingText.match(/^(\d+)([+-]\d+)?/);
@@ -963,7 +982,7 @@ function normalizeStatusTime(status) {
 }
 
 function isStatusWord(value) {
-  return /^(DNF|Done|Ready|Racing|Forfeit|Forfeited|Abandoned)$/i.test(value || "");
+  return /^(DNF|Done|Not Ready|Ready|Racing|Forfeit|Forfeited|Abandoned)$/i.test(value || "");
 }
 
 function normalizePlace(value) {

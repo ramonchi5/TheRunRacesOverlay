@@ -6,7 +6,7 @@ The app runs locally, reads a public TheRun race URL, and renders a small timing
 
 ## Status
 
-Version `1.0.0` is ready for release tagging after final live-race validation.
+Version `1.0.2` is ready for release.
 
 ## Features
 
@@ -53,7 +53,7 @@ http://localhost:5179
 The GitHub release asset is:
 
 ```text
-release/TheRunRacesOverlay-v1.0.0.zip
+release/TheRunRacesOverlay-v1.0.2.zip
 ```
 
 The zip contains:
@@ -147,6 +147,8 @@ After anyone finishes:
 
 - `Finished (confirmed)` and `Finished (waiting for confirmation)` replace split text once a runner finishes.
 - `Abandoned (...)` replaces split text once a runner abandons.
+- `Ready` and `Not Ready` display before a runner has started and before any split has been completed.
+- Live runners display their latest split as `time at split name`.
 - Positive race deltas use red; negative race deltas use green.
 - Race deltas use the same font size as the current time and sit close to the current time with a fixed gap.
 - Long runner names are clipped so the ELO rating and rating delta stay visible.
