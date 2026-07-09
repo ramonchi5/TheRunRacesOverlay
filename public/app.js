@@ -12,7 +12,7 @@ const overlayWidth = widthParam ? clamp(Number(widthParam), 120, 2400) : default
 const renderZoom = clamp(Number(params.get("zoom")) || Number(params.get("scale")) || 3, 1, 4);
 const titleFontSize = normalizeFontSizeParam(
   getFirstParam(["TitleFontSize", "titleFontSize", "titlefontsize", "title-font-size"]),
-  "0.86rem"
+  "13px"
 );
 const isControlPage = window.location.pathname === "/control" || window.location.pathname === "/";
 

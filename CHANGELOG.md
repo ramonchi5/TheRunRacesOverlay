@@ -10,8 +10,8 @@
 - Collapsed nested split rows into parent main splits for comparison.
 - Added high-resolution default rendering for sharper OBS scaling.
 - Tightened the delta/current-time timing column for a more compact default overlay width and narrower width overrides.
-- Added F1-style `2px` row gaps, full-height position lanes, uppercase wrapping title styling, and balanced row padding.
-- Added `TitleFontSize` URL option for title sizing.
+- Added F1-style `1px` row gaps, full-height position lanes, uppercase wrapping title styling, and balanced row padding.
+- Added `TitleFontSize` URL option for title sizing, defaulting to `13`.
 - Set the default overlay width to `290`.
 - Added a `release/TheRunRacesOverlay-v1.0.0.zip` package with README, changelog, license, and notices.
 - Added MIT license and third-party notices.

@@ -18,10 +18,6 @@ Node.js is required to run the local server, but it is not bundled in this repos
 
 OBS Studio is used by streamers as the host application for the Browser Source, but OBS Studio is not bundled in this repository. OBS Studio is distributed under its own license by the OBS Project.
 
-## Visual Design
-
-The overlay uses an original compact timing-tower layout inspired by common live race standings and broadcast timing boards. It does not include or copy Formula 1, FIA, broadcaster, game, or therun.gg logos, fonts, images, artwork, source code, or proprietary visual assets. All trademarks and brands remain the property of their respective owners.
-
 ## Implementation Notes
 
 The overlay code was written for this repository using platform APIs and Node.js standard-library modules. No third-party implementation code was copied into this project.
