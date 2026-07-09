@@ -237,7 +237,7 @@ function parseRaceHtml(html, raceId, sourceUrl) {
       const normalizedRating = normalizeRatingForDisplay(runner);
       const isDisqualified = isDisqualifiedRunner(runner);
       const status = isDisqualified ? "Abandoned" : runner.status || inferStatus(runner.currentTime);
-      const currentTime = isDisqualified ? "DSQ" : normalizeCurrentTimeForDisplay(runner.currentTime, status);
+      const currentTime = normalizeCurrentTimeForDisplay(runner.currentTime, status);
       return {
         place: runner.place || "-",
         username: runner.username,
@@ -247,6 +247,7 @@ function parseRaceHtml(html, raceId, sourceUrl) {
         status,
         currentTime: currentTime || normalizeStatusTime(status) || "-",
         isDisqualified,
+        disqualificationReason: runner.disqualificationReason || "",
         finalTimeMs: runner.finalTimeMs ?? null,
         abandonedAtMs: runner.abandonedAtMs ?? null,
         totalSplits: runner.totalSplits ?? null,
@@ -361,14 +362,18 @@ function findRacePayload(value) {
 
 function parseEmbeddedParticipants(race) {
   if (!race?.participants?.length) return [];
+  const raceStartMs = dateToMillis(race.startTime);
   return race.participants.map((participant, index) => {
     const liveData = participant.liveData || {};
-    const profile = buildSplitProfile(rowsFromSplitPredictions(liveData.splitPredictions || [], liveData.totalSplits));
+    const splitPredictions = liveData.splitPredictions || participant.splitPredictions || [];
+    const totalSplits = liveData.totalSplits ?? participant.totalSplits;
+    const profile = buildSplitProfile(rowsFromSplitPredictions(splitPredictions, totalSplits));
     const rawFinalTimeMs = numberOrNull(participant.finalTime);
     const currentTimeMs = numberOrNull(liveData.currentTime);
     const abandonedAtMs = getParticipantAbandonedAtMs(participant);
-    const abandonedRaceTimeMs = getParticipantAbandonedRaceTimeMs(participant, liveData, abandonedAtMs);
+    const abandonedRaceTimeMs = getParticipantAbandonedRaceTimeMs(participant, liveData, abandonedAtMs, raceStartMs);
     const isDisqualified = Boolean(participant.disqualified);
+    const disqualificationReason = cleanDisqualificationReason(participant.disqualifiedReason);
     const isFinished = isEmbeddedFinished(participant, liveData, rawFinalTimeMs);
     const finalTimeMs = isFinished ? rawFinalTimeMs || currentTimeMs || null : null;
     const displayTimeMs = isFinished ? finalTimeMs : abandonedRaceTimeMs;
@@ -389,9 +394,10 @@ function parseEmbeddedParticipants(race) {
       status,
       currentTime: displayTimeMs != null ? millisToTime(displayTimeMs) : "",
       isDisqualified,
+      disqualificationReason,
       finalTimeMs,
       abandonedAtMs,
-      totalSplits: numberOrNull(liveData.totalSplits),
+      totalSplits: numberOrNull(totalSplits),
       plannedMainSplitCount: getReliableMainSplitCount({ finalTimeMs, status }, profile),
       joinOrder: index,
       confirmationStatus: getConfirmationStatus(participant, race, isFinished),
@@ -466,14 +472,14 @@ function getParticipantAbandonedAtMs(participant) {
   return dateToMillis(participant.abandondedAtDate || participant.abandonedAtDate || participant.forfeitedAtDate);
 }
 
-function getParticipantAbandonedRaceTimeMs(participant, liveData, abandonedAtMs) {
+function getParticipantAbandonedRaceTimeMs(participant, liveData, abandonedAtMs, raceStartMs = null) {
   const explicitValue = participant.abandonedTime || participant.abandondedTime || participant.forfeitedTime;
   const explicitTime = timeToMillis(explicitValue);
   if (explicitTime != null) return explicitTime;
   const explicitMs = numberOrNull(explicitValue);
   if (explicitMs != null && explicitMs >= 0) return explicitMs;
 
-  const startedAtMs = getLiveDataStartedAtMs(liveData);
+  const startedAtMs = getLiveDataStartedAtMs(liveData) ?? raceStartMs;
   if (abandonedAtMs == null || startedAtMs == null) return null;
 
   const elapsedMs = abandonedAtMs - startedAtMs;
@@ -485,6 +491,10 @@ function getLiveDataStartedAtMs(liveData) {
   const numericStartedAt = numberOrNull(liveData?.startedAt);
   if (numericStartedAt != null) return numericStartedAt;
   return dateToMillis(liveData?.startedAt);
+}
+
+function cleanDisqualificationReason(value) {
+  return cleanTimeText(value).replace(/[()]/g, "").trim();
 }
 
 function getRunnerPercent(liveData, profile, isFinished) {
@@ -527,6 +537,7 @@ function parseStandings(html) {
         status: isStatusWord(statusText) ? statusText : "",
         currentTime: statusTitle ? shortTime(statusTitle) : statusText,
         isDisqualified,
+        disqualificationReason: "",
         finalTimeMs: statusTitle && !isStatusWord(statusText) ? timeToMillis(statusTitle) : null,
       };
     })
@@ -570,6 +581,7 @@ function parseParticipantCards(html) {
       status,
       currentTime,
       isDisqualified,
+      disqualificationReason: "",
       finalTimeMs: /^done$/i.test(status) ? timeToMillis(timerTitle || currentTime) : null,
       abandonedAtMs,
       totalSplits,
@@ -917,9 +929,9 @@ function appendAbandonedPlaces(rankedRunners, abandonedRunners = []) {
 function appendDisqualifiedPlaces(rankedRunners, disqualifiedRunners = []) {
   const rankedDisqualified = disqualifiedRunners.map((runner) => ({
     ...runner,
-    place: "#-",
+    place: "-",
     status: "Abandoned",
-    currentTime: "DSQ",
+    currentTime: getDisqualifiedDisplayTime(runner),
     confirmationStatus: "",
     raceDelta: null,
     raceDeltaMs: null,
@@ -927,6 +939,11 @@ function appendDisqualifiedPlaces(rankedRunners, disqualifiedRunners = []) {
     isDisqualified: true,
   }));
   return [...rankedRunners, ...rankedDisqualified];
+}
+
+function getDisqualifiedDisplayTime(runner) {
+  const time = extractTimeText(runner.currentTime);
+  return time || "-";
 }
 
 function getComparisonStructureKey(runner, profile) {

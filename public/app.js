@@ -166,8 +166,9 @@ function renderRunner(runner) {
   const isFinished = runner.finalTimeMs != null || /^done$/i.test(runner.status || "");
   const isDisqualified = runner.isDisqualified === true || /disqual|dsq/i.test(`${runner.status} ${rawCurrentTime}`);
   const isAbandoned = isDisqualified || /abandoned/i.test(`${runner.status} ${rawCurrentTime}`);
+  const disqualificationReason = String(runner.disqualificationReason || "").trim();
   const abandonedTimer = isAbandoned ? getTimerText(rawCurrentTime) : "";
-  const currentTime = isDisqualified ? "DSQ" : isAbandoned ? abandonedTimer || "-" : rawCurrentTime;
+  const currentTime = isAbandoned ? abandonedTimer || "-" : rawCurrentTime;
   const currentTimeClass = isAbandoned && currentTime !== "-" ? " isAbandoned" : "";
   const isReady = /^ready$/i.test(runner.status || "") && !latestSplit;
   const isNotReady = /^not ready$/i.test(runner.status || "") && !latestSplit;
@@ -209,8 +210,14 @@ function renderRunner(runner) {
                           ? "isReady"
                           : "isNotReady"
                         : "isFinished"
-                  }">${escapeHtml(isAbandoned ? "Abandoned" : isPreRaceStatus ? runner.status : "Finished")}</span>
-                  ${isPreRaceStatus || isAbandoned ? "" : `<span class="outcomeConfirmation">(${escapeHtml(confirmation)})</span>`}
+                  }">${escapeHtml(isDisqualified ? "Disqualified" : isAbandoned ? "Abandoned" : isPreRaceStatus ? runner.status : "Finished")}</span>
+                  ${
+                    isDisqualified
+                      ? `<span class="outcomeConfirmation">(${escapeHtml(disqualificationReason || "no reason given")})</span>`
+                      : isPreRaceStatus || isAbandoned
+                        ? ""
+                        : `<span class="outcomeConfirmation">(${escapeHtml(confirmation)})</span>`
+                  }
                 </span>
               </span>`
             : `<span class="splitMeta">

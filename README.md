@@ -141,14 +141,14 @@ After anyone finishes:
 - Other finished runners are ordered by final time and keep deltas against the fastest finisher.
 - Runners still racing are ordered after finished runners by their latest comparable split delta against the fastest finisher.
 - Abandoned runners are ordered at the bottom. If multiple runners abandon, the later abandoner ranks above the earlier abandoner, so the first to abandon is last.
-- Disqualified runners are placed below abandoned runners with `#-` and `DSQ`.
+- Disqualified runners are placed below abandoned runners with `-` and their disqualification time when available.
 - Runners with incompatible split structures remain below the comparable leaderboard with no race delta.
 
 ## Display Rules
 
 - `Finished (confirmed)` and `Finished (waiting for confirmation)` replace split text once a runner finishes.
 - `Abandoned` replaces split text once a runner abandons; abandoned rows show the abandon time in red when available and do not show confirmation text.
-- Disqualified rows keep the red `Abandoned` outcome label and show red `DSQ` in the time column.
+- Disqualified rows show red `Disqualified (reason)` below the runner name and a red disqualification time in the time column.
 - `Ready` and `Not Ready` display before a runner has started and before any split has been completed.
 - Live runners display their current runner timer in the right column.
 - Live runners display their latest completed split below the name as `time at split name`.
