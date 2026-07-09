@@ -45,7 +45,7 @@ Or run from PowerShell:
 The local server starts at:
 
 ```text
-http://localhost:5179
+http://127.0.0.1:5179
 ```
 
 ## Release Package
@@ -75,7 +75,7 @@ Only `server.js` and `public/` are strictly required at runtime. The start scrip
 Open the control page in your normal browser:
 
 ```text
-http://localhost:5179/control
+http://127.0.0.1:5179/control
 ```
 
 Paste a race URL such as:
@@ -91,7 +91,7 @@ The OBS source keeps the same overlay URL and updates on its next poll.
 Add an OBS Browser Source:
 
 ```text
-URL:    http://localhost:5179/overlay
+URL:    http://127.0.0.1:5179/overlay
 Width:  1100
 Height: 900
 ```

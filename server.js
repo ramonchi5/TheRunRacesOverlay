@@ -1143,7 +1143,7 @@ function serveStatic(req, res, pathname) {
 
 const server = http.createServer(async (req, res) => {
   try {
-    const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const requestUrl = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
 
     if (requestUrl.pathname === "/health") {
       sendJson(res, 200, { ok: true, version: APP_VERSION });
@@ -1193,6 +1193,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, "127.0.0.1", () => {
-  console.log(`TheRun OBS overlay is running: http://localhost:${port}/overlay`);
-  console.log(`Paste new race URLs at: http://localhost:${port}/control`);
+  console.log(`TheRun OBS overlay is running: http://127.0.0.1:${port}/overlay`);
+  console.log(`Paste new race URLs at: http://127.0.0.1:${port}/control`);
 });
