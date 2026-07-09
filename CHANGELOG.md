@@ -3,6 +3,7 @@
 ## 1.0.3 - 2026-07-09
 
 - Changed abandoned rows to show only the red `Abandoned` outcome under the runner name and the abandon time in red when available.
+- Removed the title background band so the title sits visually separate from runner rows.
 - Added a `release/TheRunRacesOverlay-v1.0.3.zip` package.
 
 ## 1.0.2 - 2026-07-09

@@ -65,7 +65,7 @@ body {
 .overlayHeader {
   display: block;
   padding: 6px var(--overlay-x-padding) 7px;
-  background: var(--overlay-row-bg);
+  background: transparent;
   border-bottom: 0;
 }
 
