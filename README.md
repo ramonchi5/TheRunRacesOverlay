@@ -6,7 +6,7 @@ The app runs locally, reads a public TheRun race URL, and renders a small timing
 
 ## Status
 
-Version `2.0.0` is ready for live-race testing.
+Version `2.0.1` is ready for live-race testing.
 
 ## Features
 
@@ -18,8 +18,12 @@ Version `2.0.0` is ready for live-race testing.
 - Full split-plan detection from each nested runner's public `.lss` file, with subsplits collapsed into parent groups.
 - Active leadership based on who reached the furthest parent split first in real-world time.
 - Race deltas based on each runner's own LiveSplit time at the latest shared parent split.
+- Mixed IGT/RTA detection that preserves physical race order while suppressing invalid cross-timing deltas.
 - Finished runners ordered by final time, with the fastest finisher as the baseline.
 - Abandoned runners placed at the bottom; the earliest abandoner is last.
+- Control-page diagnostics for timing method, split-plan matching, parent-split progress, and delta comparability.
+- Compact parent-split progress, split-completion highlights, and live-stream dots on the overlay.
+- Last successful race data remains on screen during temporary TheRun connection failures.
 
 ## Requirements
 
@@ -54,7 +58,7 @@ http://127.0.0.1:5179
 The GitHub release asset is:
 
 ```text
-release/TheRunRacesOverlay-v2.0.0.zip
+release/TheRunRacesOverlay-v2.0.1.zip
 ```
 
 The zip contains:
@@ -87,6 +91,8 @@ https://therun.gg/races/16c4
 ```
 
 The OBS source keeps the same overlay URL and updates on its next poll.
+
+The control page also contains a diagnostics table. It reports the data currently used for each visible runner, including timing method, completed/planned parent splits, public split-plan status, and whether a race delta is comparable. Diagnostics never appear in the OBS overlay.
 
 ## OBS Setup
 
@@ -139,6 +145,7 @@ Before anyone finishes:
 - When runners are on the same parent split, whoever reached it first in real-world time stays ahead.
 - The `LEADER` label is therefore independent of whether a runner uses IGT, RTA, or another LiveSplit timing method.
 - Race deltas still compare the runners' LiveSplit times at the latest parent split both runners have completed. A runner behind the physical leader can correctly show a green negative delta.
+- If two runners report different timing methods, such as IGT and RTA, their physical positions remain intact but no numerical delta is shown between them.
 - The overlay never compares one runner's completed split time against another runner's live current timer.
 
 After anyone finishes:
@@ -159,6 +166,9 @@ After anyone finishes:
 - `Ready` and `Not Ready` display before a runner has started and before any split has been completed.
 - Live runners display their current runner timer in the right column.
 - Live runners display their latest completed split below the name as `time at split name`.
+- `SPLIT 5/15` beneath the title shows the physical leader's completed parent-split progress.
+- A row briefly flashes green when that runner completes a parent split.
+- A small red dot before a runner name means TheRun currently reports that runner as streaming.
 - ELO rating changes are hidden until TheRun reports a real post-race rating.
 - Positive race deltas use red; negative race deltas use green.
 - Race deltas use the same font size as the current time and sit close to the current time with a fixed gap.
@@ -167,12 +177,15 @@ After anyone finishes:
 - Position numbers sit on full-height semi-transparent square lanes.
 - The race title is centered, uppercase, transparent behind the text, wraps onto extra lines instead of being abbreviated, and can be resized with `TitleFontSize`.
 - The row background padding is balanced on both sides, matching the space before the position tile with the space after the current time.
+- Participants that TheRun marks `visible: false` are excluded from the leaderboard.
 
 ## Data And Privacy
 
 This tool only makes public `GET` requests to therun.gg pages and TheRun's public split-file CDN. It does not submit race actions, modify races, or require user credentials.
 
 The app prefers TheRun's embedded public race payload when available and falls back to visible page sections when needed. Public `.lss` plans are cached locally in memory and are used only to count parent split groups; subsplits never become leaderboard checkpoints.
+
+If a temporary TheRun request fails after the overlay has already loaded successfully, the local server retains and serves the last successful race snapshot. A small amber dot appears on the overlay until fresh data returns; the control-page diagnostics show the underlying warning.
 
 ## Attribution And Licensing
 

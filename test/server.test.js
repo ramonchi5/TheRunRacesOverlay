@@ -7,6 +7,8 @@ const {
   buildSplitProfile,
   getMatchingPlannedMainSplitCount,
   getSplitsFileUrls,
+  makeStaleRaceData,
+  parseEmbeddedParticipants,
   parseLiveSplitSegmentNames,
   parseSplitLabel,
   rowsFromSplitPredictions,
@@ -40,6 +42,8 @@ function activeRunner(username, times, arrivals, options = {}) {
     percent: "-",
     status: "Racing",
     currentTime: "10:00",
+    timingMethod: options.timingMethod ?? "IGT",
+    streaming: false,
     finalTimeMs: null,
     abandonedAtMs: null,
     totalSplits: options.totalSplits ?? times.length,
@@ -234,4 +238,83 @@ test("creator split count resolves an otherwise tied structure choice", () => {
   assert.equal(ranked[0].isComparisonBaseline, true);
   assert.equal(ranked[1].username, "Other");
   assert.equal(ranked[1].raceDelta, null);
+});
+
+test("mixed timing methods preserve physical order but suppress active deltas", () => {
+  const firstArrival = activeRunner("FirstArrival", [110_000, 220_000], [1_000, 4_000], {
+    totalSplits: 4,
+    plannedMainSplitCount: 4,
+    timingMethod: "IGT",
+  });
+  const laterArrival = activeRunner("LaterArrival", [100_000, 200_000], [900, 5_000], {
+    totalSplits: 4,
+    plannedMainSplitCount: 4,
+    timingMethod: "RTA",
+  });
+
+  const ranked = applyRaceComparisons([laterArrival, firstArrival]);
+  assert.equal(ranked[0].username, "FirstArrival");
+  assert.equal(ranked[0].isComparisonBaseline, true);
+  assert.equal(ranked[1].username, "LaterArrival");
+  assert.equal(ranked[1].raceDelta, null);
+  assert.equal(ranked[1].comparisonStatus, "timing method mismatch");
+});
+
+test("mixed timing methods suppress final-time deltas", () => {
+  const first = {
+    ...activeRunner("First", [100_000, 200_000], [1_000, 2_000], {
+      totalSplits: 2,
+      plannedMainSplitCount: 2,
+      timingMethod: "IGT",
+    }),
+    status: "Done",
+    finalTimeMs: 200_000,
+    currentTime: "3:20",
+  };
+  const second = {
+    ...activeRunner("Second", [110_000, 220_000], [1_100, 2_100], {
+      totalSplits: 2,
+      plannedMainSplitCount: 2,
+      timingMethod: "RTA",
+    }),
+    status: "Done",
+    finalTimeMs: 220_000,
+    currentTime: "3:40",
+  };
+
+  const ranked = applyRaceComparisons([second, first]);
+  assert.equal(ranked[0].username, "First");
+  assert.equal(ranked[1].username, "Second");
+  assert.equal(ranked[1].raceDelta, null);
+  assert.equal(ranked[1].comparisonStatus, "timing method mismatch");
+});
+
+test("excludes participants marked invisible", () => {
+  const race = {
+    creator: "Visible",
+    participants: [
+      { user: "Hidden", visible: false, liveData: {} },
+      { user: "Visible", visible: true, ratingBefore: 1500, liveData: {} },
+    ],
+  };
+
+  const runners = parseEmbeddedParticipants(race);
+  assert.deepEqual(runners.map((runner) => runner.username), ["Visible"]);
+});
+
+test("stale fallback retains the last successful race snapshot", () => {
+  const snapshot = {
+    ok: true,
+    version: "2.0.1",
+    raceId: "test",
+    fetchedAt: "2026-07-10T12:00:00.000Z",
+    runners: [{ username: "Runner" }],
+  };
+
+  const stale = makeStaleRaceData(snapshot, "Temporary upstream failure");
+  assert.equal(stale.stale, true);
+  assert.equal(stale.staleReason, "Temporary upstream failure");
+  assert.equal(stale.fetchedAt, snapshot.fetchedAt);
+  assert.deepEqual(stale.runners, snapshot.runners);
+  assert.ok(stale.servedAt);
 });

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.1 - 2026-07-10
+
+- Excluded participants that TheRun marks `visible: false`.
+- Added timing-method detection and suppressed race deltas between mixed IGT/RTA runners while preserving physical race order.
+- Preserved the last successful race snapshot through temporary TheRun request failures, with a quiet overlay warning and detailed control-page status.
+- Added control-only diagnostics for timing method, runner state, parent-split progress, split-plan matching, and delta comparability.
+- Added compact `SPLIT x/y` parent-split progress beneath the title.
+- Added a brief row highlight when a runner completes a parent split.
+- Added a small red indicator before names of runners that TheRun reports as streaming.
+- Added regression tests for mixed timing methods, invisible participants, and stale-data fallback.
+- Added a `release/TheRunRacesOverlay-v2.0.1.zip` package without modifying previous release archives.
+
 ## 2.0.0 - 2026-07-10
 
 - Added complete parent-split detection for nested LiveSplit layouts by reading each runner's public `.lss` plan.

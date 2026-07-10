@@ -40,6 +40,7 @@ body {
   border-radius: 0;
   box-shadow: none;
   overflow: hidden;
+  position: relative;
   text-shadow:
     0 1px 1px rgba(0, 0, 0, 0.95),
     0 0 3px rgba(255, 255, 255, 0.08);
@@ -93,6 +94,16 @@ body {
   text-transform: uppercase;
 }
 
+.raceProgress {
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.62rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
 .statusLine {
   display: inline-flex;
   align-items: center;
@@ -137,6 +148,14 @@ body {
 
 .runner.isDnf {
   opacity: 1;
+}
+
+.runner.justSplit {
+  animation: runnerSplitFlash 1.25s ease-out;
+}
+
+.runner.justSplit .place {
+  animation: placeSplitFlash 1.25s ease-out;
 }
 
 .place {
@@ -235,6 +254,21 @@ body {
   overflow: hidden;
   text-overflow: clip;
   white-space: nowrap;
+}
+
+.streamingIndicator,
+.diagnosticLiveDot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff4545;
+  box-shadow: 0 0 5px rgba(255, 69, 69, 0.8);
+}
+
+.streamingIndicator {
+  align-self: flex-start;
+  margin: 1px 4px 0 0;
 }
 
 .currentTime {
@@ -436,10 +470,23 @@ body {
   font-weight: 800;
 }
 
+.connectionWarning {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #f1be55;
+  box-shadow: 0 0 5px rgba(241, 190, 85, 0.75);
+}
+
 .setup {
   display: grid;
+  height: 100vh;
   min-height: 100vh;
-  place-items: center;
+  place-items: start center;
+  overflow-y: auto;
   padding: 20px;
   color: #eff7ee;
   background:
@@ -546,6 +593,148 @@ body {
   font-weight: 850;
 }
 
+.diagnosticsSection {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(180, 219, 178, 0.18);
+}
+
+.diagnosticsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.diagnosticsTitle {
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.diagnosticsSubtitle {
+  margin-top: 2px;
+  color: #93a895;
+  font-size: 0.7rem;
+}
+
+.diagnosticsRefresh {
+  min-height: 32px;
+  border: 1px solid rgba(180, 219, 178, 0.24);
+  border-radius: 6px;
+  padding: 0 10px;
+  color: #eff7ee;
+  background: rgba(0, 0, 0, 0.2);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.diagnosticsRefresh:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.diagnosticsSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin-top: 14px;
+}
+
+.diagnosticItem {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.diagnosticItem span {
+  color: #93a895;
+  font-size: 0.63rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.diagnosticItem strong {
+  overflow: hidden;
+  color: #eff7ee;
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnosticsSection .ok {
+  color: #86cf7d;
+}
+
+.diagnosticsSection .warn {
+  color: #f1be55;
+}
+
+.diagnosticsSection .muted {
+  color: #93a895;
+}
+
+.diagnosticsError,
+.diagnosticsWarning {
+  margin-top: 12px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.diagnosticsError {
+  color: #ff8585;
+}
+
+.diagnosticsWarning {
+  color: #f1be55;
+}
+
+.diagnosticsTableWrap {
+  margin-top: 14px;
+  overflow-x: auto;
+}
+
+.diagnosticsTable {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 0.7rem;
+}
+
+.diagnosticsTable th,
+.diagnosticsTable td {
+  padding: 8px 7px;
+  border-bottom: 1px solid rgba(180, 219, 178, 0.12);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.diagnosticsTable th {
+  color: #93a895;
+  font-size: 0.62rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.diagnosticsTable td {
+  color: #dfeade;
+}
+
+.diagnosticRunnerName {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #ffffff;
+  font-weight: 850;
+}
+
+.diagnosticsEmpty {
+  color: #93a895;
+  text-align: center !important;
+}
+
 @keyframes pulse {
   0%,
   100% {
@@ -556,6 +745,28 @@ body {
   50% {
     opacity: 1;
     transform: scale(1.1);
+  }
+}
+
+@keyframes runnerSplitFlash {
+  0% {
+    background-color: rgba(72, 170, 91, 0.68);
+    box-shadow: inset 3px 0 0 #7dff8c;
+  }
+
+  100% {
+    background-color: var(--overlay-row-bg);
+    box-shadow: inset 3px 0 0 rgba(125, 255, 140, 0);
+  }
+}
+
+@keyframes placeSplitFlash {
+  0% {
+    background-color: rgba(72, 170, 91, 0.82);
+  }
+
+  100% {
+    background-color: rgba(72, 78, 74, 0.5);
   }
 }
 
@@ -589,5 +800,9 @@ body {
 
   .controlGrid {
     grid-template-columns: 1fr;
+  }
+
+  .diagnosticsSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -20,7 +20,12 @@ let latestData = null;
 let lastError = null;
 let loading = false;
 let pollTimer = null;
+let controlPollTimer = null;
 let controlState = null;
+let controlDiagnostics = null;
+let diagnosticsLoading = false;
+let diagnosticsError = "";
+let pendingSplitHighlights = new Set();
 
 document.documentElement.dataset.theme = theme;
 document.documentElement.style.setProperty("--overlay-width", `${overlayWidth}px`);
@@ -30,6 +35,7 @@ document.documentElement.style.setProperty("--title-font-size", titleFontSize);
 if (isControlPage) {
   renderControl();
   loadCurrentRace();
+  controlPollTimer = window.setInterval(() => loadControlDiagnostics({ silent: true }), 5000);
 } else {
   renderOverlayShell();
   refreshRace();
@@ -38,9 +44,11 @@ if (isControlPage) {
 
 window.addEventListener("beforeunload", () => {
   if (pollTimer) window.clearInterval(pollTimer);
+  if (controlPollTimer) window.clearInterval(controlPollTimer);
 });
 
 function renderControl(message = "") {
+  const draftRaceInput = app.querySelector("#raceUrl")?.value;
   app.className = "setup";
   const overlayUrl = `${window.location.origin}/overlay`;
   const current = controlState?.currentRace;
@@ -52,7 +60,7 @@ function renderControl(message = "") {
         <label for="raceUrl">Current race URL or id</label>
         <div class="setupRow">
           <input id="raceUrl" name="race" autocomplete="off" placeholder="https://therun.gg/races/16c4" value="${escapeHtml(
-            current?.sourceUrl || ""
+            draftRaceInput ?? current?.sourceUrl ?? ""
           )}" />
           <button type="submit">${controlState?.saving ? "Saving..." : "Set Race"}</button>
         </div>
@@ -68,6 +76,7 @@ function renderControl(message = "") {
         </div>
       </div>
       ${message ? `<div class="controlMessage">${escapeHtml(message)}</div>` : ""}
+      ${renderControlDiagnostics()}
     </section>
   `;
 
@@ -77,6 +86,8 @@ function renderControl(message = "") {
     if (!value) return;
     await saveCurrentRace(value);
   });
+
+  bindDiagnosticsRefresh();
 }
 
 async function loadCurrentRace() {
@@ -86,6 +97,7 @@ async function loadCurrentRace() {
     if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
     controlState = data;
     renderControl();
+    await loadControlDiagnostics();
   } catch (error) {
     controlState = { ok: false, currentRace: null };
     renderControl(error.message || String(error));
@@ -104,12 +116,167 @@ async function saveCurrentRace(race) {
     });
     const data = await response.json();
     if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
-    controlState = { ok: true, currentRace: data.currentRace };
+    controlState = { ok: true, version: data.version, currentRace: data.currentRace };
+    controlDiagnostics = data.race || null;
+    diagnosticsError = "";
     renderControl("Race updated. OBS will refresh on its next poll.");
   } catch (error) {
     controlState = { ...(controlState || {}), saving: false };
     renderControl(error.message || String(error));
   }
+}
+
+async function loadControlDiagnostics({ silent = false } = {}) {
+  const raceId = controlState?.currentRace?.raceId;
+  if (!raceId || diagnosticsLoading) return;
+
+  diagnosticsLoading = true;
+  if (!silent) renderControl();
+
+  try {
+    const response = await fetch(`/api/race?race=${encodeURIComponent(raceId)}&diagnostics=${Date.now()}`, {
+      cache: "no-store",
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    controlDiagnostics = data;
+    diagnosticsError = "";
+  } catch (error) {
+    diagnosticsError = error.message || String(error);
+  } finally {
+    diagnosticsLoading = false;
+    if (silent) {
+      refreshControlDiagnosticsSection();
+    } else {
+      renderControl();
+    }
+  }
+}
+
+function refreshControlDiagnosticsSection() {
+  const diagnosticsMarkup = renderControlDiagnostics();
+  const existing = app.querySelector(".diagnosticsSection");
+  if (!diagnosticsMarkup) {
+    existing?.remove();
+    return;
+  }
+
+  if (existing) {
+    existing.outerHTML = diagnosticsMarkup;
+  } else {
+    app.querySelector(".setupPanel")?.insertAdjacentHTML("beforeend", diagnosticsMarkup);
+  }
+  bindDiagnosticsRefresh();
+}
+
+function bindDiagnosticsRefresh() {
+  app.querySelector('[data-action="refresh-diagnostics"]')?.addEventListener("click", () => {
+    loadControlDiagnostics();
+  });
+}
+
+function renderControlDiagnostics() {
+  if (!controlState?.currentRace?.raceId) return "";
+
+  const data = controlDiagnostics;
+  const runners = data?.runners || [];
+  const freshness = data?.stale ? "Last good data" : data ? "Live" : "Waiting";
+  const freshnessClass = data?.stale ? "warn" : data ? "ok" : "muted";
+
+  return `
+    <section class="diagnosticsSection">
+      <div class="diagnosticsHeader">
+        <div>
+          <div class="diagnosticsTitle">Diagnostics</div>
+          <div class="diagnosticsSubtitle">Visible on this control page only</div>
+        </div>
+        <button class="diagnosticsRefresh" type="button" data-action="refresh-diagnostics" ${
+          diagnosticsLoading ? "disabled" : ""
+        }>${diagnosticsLoading ? "Refreshing..." : "Refresh"}</button>
+      </div>
+      <div class="diagnosticsSummary">
+        ${renderDiagnosticItem("Version", data?.version || controlState?.version || "-")}
+        ${renderDiagnosticItem("Race", data?.raceStatus || "Unknown")}
+        ${renderDiagnosticItem("Runners", data?.participantCount ?? runners.length)}
+        ${renderDiagnosticItem("Source", freshness, freshnessClass)}
+        ${renderDiagnosticItem("Fetched", formatDiagnosticTime(data?.fetchedAt))}
+        ${renderDiagnosticItem("Last event", formatDiagnosticTime(data?.lastEventAt))}
+      </div>
+      ${
+        diagnosticsError
+          ? `<div class="diagnosticsError">${escapeHtml(diagnosticsError)}. Retaining the last successful diagnostics.</div>`
+          : ""
+      }
+      ${
+        data?.staleReason
+          ? `<div class="diagnosticsWarning">${escapeHtml(data.staleReason)}</div>`
+          : ""
+      }
+      <div class="diagnosticsTableWrap">
+        <table class="diagnosticsTable">
+          <thead>
+            <tr>
+              <th>Runner</th>
+              <th>State</th>
+              <th>Timing</th>
+              <th>Parent splits</th>
+              <th>Plan</th>
+              <th>Comparison</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              runners.length
+                ? runners.map(renderDiagnosticRunner).join("")
+                : `<tr><td colspan="6" class="diagnosticsEmpty">${
+                    diagnosticsLoading ? "Loading race diagnostics..." : "No runner data available."
+                  }</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderDiagnosticItem(label, value, valueClass = "") {
+  return `
+    <div class="diagnosticItem">
+      <span>${escapeHtml(label)}</span>
+      <strong class="${escapeHtml(valueClass)}">${escapeHtml(value)}</strong>
+    </div>
+  `;
+}
+
+function renderDiagnosticRunner(runner) {
+  const planned = runner.plannedMainSplitCount ?? "?";
+  const completed = runner.completedMainSplitCount ?? 0;
+  const raw = runner.totalSplits != null ? ` (raw ${runner.totalSplits})` : "";
+  const state = runner.isDisqualified ? "Disqualified" : runner.status || "Unknown";
+  const comparisonClass = runner.comparisonStatus === "comparable" || runner.comparisonStatus === "leader"
+    ? "ok"
+    : runner.comparisonStatus === "timing method mismatch"
+      ? "warn"
+      : "muted";
+
+  return `
+    <tr>
+      <td><span class="diagnosticRunnerName">${
+        runner.streaming ? '<span class="diagnosticLiveDot" aria-label="Streaming"></span>' : ""
+      }${escapeHtml(runner.username)}</span></td>
+      <td>${escapeHtml(state)}</td>
+      <td>${escapeHtml(runner.timingMethod || "Unknown")}</td>
+      <td>${escapeHtml(`${completed}/${planned}${raw}`)}</td>
+      <td>${escapeHtml(runner.splitPlanStatus || "unknown")}</td>
+      <td><span class="${comparisonClass}">${escapeHtml(runner.comparisonStatus || "unknown")}</span></td>
+    </tr>
+  `;
+}
+
+function formatDiagnosticTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleTimeString();
 }
 
 function renderOverlayShell() {
@@ -135,6 +302,8 @@ function renderOverlayShell() {
 
   const runners = latestData.runners.slice(0, limit);
   const title = `${latestData.category || latestData.title || `Race ${latestData.raceId}`} Race`;
+  const raceProgress = getLeaderRaceProgress(runners);
+  const connectionWarning = lastError || (latestData.stale ? latestData.staleReason || "Using last good data" : "");
 
   app.innerHTML = `
     <section class="overlay ${panelMode ? "overlayPanel" : ""}">
@@ -143,6 +312,7 @@ function renderOverlayShell() {
           ? `<header class="overlayHeader">
               <div class="titleBlock">
                 <div class="raceTitle">${escapeHtml(title)}</div>
+                ${raceProgress ? `<div class="raceProgress">${escapeHtml(raceProgress)}</div>` : ""}
               </div>
             </header>`
           : ""
@@ -150,9 +320,17 @@ function renderOverlayShell() {
       <div class="runnerList">
         ${runners.map(renderRunner).join("")}
       </div>
-      ${lastError ? `<div class="softError">${escapeHtml(lastError)}</div>` : ""}
+      ${
+        connectionWarning
+          ? `<span class="connectionWarning" title="${escapeHtml(connectionWarning)}" aria-label="${escapeHtml(
+              connectionWarning
+            )}"></span>`
+          : ""
+      }
     </section>
   `;
+
+  pendingSplitHighlights = new Set();
 }
 
 function renderRunner(runner) {
@@ -190,11 +368,14 @@ function renderRunner(runner) {
       ? "leader"
       : "empty";
 
+  const highlightClass = pendingSplitHighlights.has(runner.username) ? " justSplit" : "";
+
   return `
-    <article class="runner ${isDnf ? "isDnf" : ""}">
+    <article class="runner ${isDnf ? "isDnf" : ""}${highlightClass}">
       <div class="place">${escapeHtml(place)}</div>
       <div class="runnerInfo">
         <span class="runnerName">
+          ${runner.streaming ? '<span class="streamingIndicator" aria-label="Live stream"></span>' : ""}
           <span class="runnerNameText">${escapeHtml(runner.username)}</span>
           ${rating}
         </span>
@@ -249,6 +430,7 @@ async function refreshRace() {
     if (!response.ok || !data.ok) {
       throw new Error(data.error || `HTTP ${response.status}`);
     }
+    pendingSplitHighlights = detectParentSplitChanges(latestData, data);
     latestData = data;
     lastError = null;
   } catch (error) {
@@ -257,6 +439,31 @@ async function refreshRace() {
     loading = false;
     renderOverlayShell();
   }
+}
+
+function detectParentSplitChanges(previousData, nextData) {
+  if (!previousData?.runners?.length || !nextData?.runners?.length || nextData.stale) return new Set();
+
+  const previousByName = new Map(previousData.runners.map((runner) => [runner.username, runner]));
+  const changed = new Set();
+  for (const runner of nextData.runners) {
+    const previous = previousByName.get(runner.username);
+    if (!previous) continue;
+    const previousCount = Number(previous.completedMainSplitCount) || 0;
+    const nextCount = Number(runner.completedMainSplitCount) || 0;
+    if (nextCount > previousCount) changed.add(runner.username);
+  }
+  return changed;
+}
+
+function getLeaderRaceProgress(runners) {
+  const leader = runners.find((runner) => runner.isComparisonBaseline) || runners[0];
+  const total = Number(leader?.plannedMainSplitCount);
+  if (!leader || !Number.isFinite(total) || total <= 0) return "";
+
+  const finished = leader.finalTimeMs != null || /^done$/i.test(leader.status || "");
+  const completed = finished ? total : clamp(Number(leader.completedMainSplitCount) || 0, 0, total);
+  return `Split ${completed}/${total}`;
 }
 
 function normalizePlace(value) {

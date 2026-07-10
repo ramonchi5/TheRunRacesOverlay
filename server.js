@@ -7,9 +7,10 @@ const { URL } = require("node:url");
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
 const STATE_FILE = path.join(ROOT, ".overlay-state.json");
-const APP_VERSION = "2.0.0";
+const APP_VERSION = "2.0.1";
 const DEFAULT_PORT = 5179;
 const CACHE_TTL_MS = 750;
+const ERROR_RETRY_MS = 3000;
 const SPLIT_PLAN_CACHE_TTL_MS = 10 * 60 * 1000;
 const SPLIT_PLAN_FAILURE_TTL_MS = 30 * 1000;
 const MAX_RESPONSE_BYTES = 6 * 1024 * 1024;
@@ -179,17 +180,39 @@ function fetchText(url, redirectsLeft = 4, maxResponseBytes = MAX_RESPONSE_BYTES
 async function getRaceData(raceId) {
   const cacheKey = raceId;
   const cached = cache.get(cacheKey);
-  if (cached && Date.now() - cached.time < CACHE_TTL_MS) {
+  const now = Date.now();
+  if (cached && now - cached.time < CACHE_TTL_MS) {
     return cached.data;
   }
 
-  const sourceUrl = `https://therun.gg/races/${encodeURIComponent(raceId)}`;
-  const html = await fetchText(sourceUrl);
-  const embeddedPageData = parseEmbeddedPageData(html, raceId);
-  const splitPlansByRunner = await getRaceSplitPlans(embeddedPageData.race);
-  const data = parseRaceHtml(html, raceId, sourceUrl, { embeddedPageData, splitPlansByRunner });
-  cache.set(cacheKey, { time: Date.now(), data });
-  return data;
+  if (cached?.failureTime && now - cached.failureTime < ERROR_RETRY_MS) {
+    return makeStaleRaceData(cached.data, cached.lastError);
+  }
+
+  try {
+    const sourceUrl = `https://therun.gg/races/${encodeURIComponent(raceId)}`;
+    const html = await fetchText(sourceUrl);
+    const embeddedPageData = parseEmbeddedPageData(html, raceId);
+    const splitPlansByRunner = await getRaceSplitPlans(embeddedPageData.race);
+    const data = parseRaceHtml(html, raceId, sourceUrl, { embeddedPageData, splitPlansByRunner });
+    cache.set(cacheKey, { time: Date.now(), data, failureTime: null, lastError: "" });
+    return data;
+  } catch (error) {
+    if (!cached?.data) throw error;
+    cached.failureTime = Date.now();
+    cached.lastError = error.message || String(error);
+    cache.set(cacheKey, cached);
+    return makeStaleRaceData(cached.data, cached.lastError);
+  }
+}
+
+function makeStaleRaceData(data, error) {
+  return {
+    ...data,
+    stale: true,
+    staleReason: error || "TheRun data is temporarily unavailable.",
+    servedAt: new Date().toISOString(),
+  };
 }
 
 async function getRaceSplitPlans(race) {
@@ -198,7 +221,9 @@ async function getRaceSplitPlans(race) {
   const category = String(race.displayCategory || race.category || "").trim();
   if (!game || !category) return new Map();
 
-  const nestedParticipants = race.participants.filter(participantUsesSubsplits);
+  const nestedParticipants = race.participants
+    .filter((participant) => participant.visible !== false)
+    .filter(participantUsesSubsplits);
   const plans = await Promise.all(
     nestedParticipants.map(async (participant) => {
       const plan = await getRunnerSplitPlan(participant.user, game, category);
@@ -316,6 +341,13 @@ function parseRaceHtml(html, raceId, sourceUrl, options = {}) {
   const embeddedRace = embeddedPageData.race;
   const raceEventIndex = buildRaceEventIndex(embeddedPageData.events);
   const metadata = parseMetadata(html);
+  const visibleParticipantNames = embeddedRace?.participants?.length
+    ? new Set(
+        embeddedRace.participants
+          .filter((participant) => participant.visible !== false)
+          .map((participant) => normalizeEventUsername(participant.user))
+      )
+    : null;
   const embeddedRunners = parseEmbeddedParticipants(
     embeddedRace,
     raceEventIndex,
@@ -364,6 +396,10 @@ function parseRaceHtml(html, raceId, sourceUrl, options = {}) {
   const runners = [...orderedNames, ...leftovers]
     .map((name) => runnersByName.get(name))
     .filter(Boolean)
+    .filter(
+      (runner) =>
+        !visibleParticipantNames || visibleParticipantNames.has(normalizeEventUsername(runner.username))
+    )
     .map((runner) => {
       const normalizedRating = normalizeRatingForDisplay(runner);
       const isDisqualified = isDisqualifiedRunner(runner);
@@ -377,12 +413,18 @@ function parseRaceHtml(html, raceId, sourceUrl, options = {}) {
         percent: runner.percent || runner.latestSplit?.percent || "-",
         status,
         currentTime: currentTime || normalizeStatusTime(status) || "-",
+        timingMethod: runner.timingMethod || "",
+        streaming: runner.streaming === true,
         isDisqualified,
         disqualificationReason: runner.disqualificationReason || "",
         finalTimeMs: runner.finalTimeMs ?? null,
         abandonedAtMs: runner.abandonedAtMs ?? null,
         totalSplits: runner.totalSplits ?? null,
         plannedMainSplitCount: runner.plannedMainSplitCount ?? null,
+        completedMainSplitCount: runner.completedMainSplitCount ?? runner.splitProfile?.units?.length ?? 0,
+        currentSplitIndex: runner.currentSplitIndex ?? null,
+        splitPlanStatus: runner.splitPlanStatus || "unknown",
+        splitPlanRawSplitCount: runner.splitPlanRawSplitCount ?? null,
         joinOrder: runner.joinOrder ?? null,
         joinedAtMs: runner.joinedAtMs ?? null,
         isRaceCreator: runner.isRaceCreator === true,
@@ -401,15 +443,35 @@ function parseRaceHtml(html, raceId, sourceUrl, options = {}) {
 
   return {
     ok: true,
+    version: APP_VERSION,
     raceId,
     sourceUrl,
     title: metadata.title,
     game: metadata.game,
     category: metadata.category,
     raceTimer: metadata.raceTimer,
+    raceStatus: embeddedRace?.status || "",
+    startMethod: embeddedRace?.startMethod || "",
+    participantCount: runners.length,
+    lastEventAt: getLatestEventTimestamp(embeddedPageData.events),
     fetchedAt: new Date().toISOString(),
+    stale: false,
+    staleReason: "",
     runners: rankedRunners,
   };
+}
+
+function getLatestEventTimestamp(events) {
+  let latestMs = null;
+  let latestValue = "";
+  for (const event of events || []) {
+    const eventMs = dateToMillis(event.time);
+    if (eventMs != null && (latestMs == null || eventMs > latestMs)) {
+      latestMs = eventMs;
+      latestValue = event.time;
+    }
+  }
+  return latestValue;
 }
 
 function normalizeRatingForDisplay(runner) {
@@ -523,7 +585,8 @@ function parseEmbeddedParticipants(
 ) {
   if (!race?.participants?.length) return [];
   const raceStartMs = dateToMillis(race.startTime);
-  return race.participants.map((participant, index) => {
+  const visibleParticipants = race.participants.filter((participant) => participant.visible !== false);
+  return visibleParticipants.map((participant, index) => {
     const liveData = participant.liveData || {};
     const splitPredictions = liveData.splitPredictions || participant.splitPredictions || [];
     const totalSplits = liveData.totalSplits ?? participant.totalSplits;
@@ -552,8 +615,16 @@ function parseEmbeddedParticipants(
     const hasPostRaceRating = hasRatingOutcome && ratingAfter > 0;
     const displayRating = hasPostRaceRating ? ratingAfter : ratingBefore > 0 ? ratingBefore : "";
     const ratingDelta = hasPostRaceRating && ratingBefore > 0 ? ratingAfter - ratingBefore : null;
+    const usesSubsplits = participantUsesSubsplits(participant);
     const splitPlan = splitPlansByRunner.get(normalizeEventUsername(participant.user));
     const plannedSplitCount = getMatchingPlannedMainSplitCount(splitPlan, totalSplits);
+    const splitPlanStatus = !usesSubsplits
+      ? "not required"
+      : !splitPlan
+        ? "unavailable"
+        : plannedSplitCount
+          ? "matched"
+          : "raw count mismatch";
 
     return {
       place: "",
@@ -563,6 +634,8 @@ function parseEmbeddedParticipants(
       percent: getRunnerPercent(liveData, profile, isFinished),
       status,
       currentTime: displayTimeMs != null ? millisToTime(displayTimeMs) : "",
+      timingMethod: getTimingMethod(liveData, race),
+      streaming: liveData.streaming === true || participant.streaming === true,
       isDisqualified,
       disqualificationReason,
       finalTimeMs,
@@ -570,6 +643,10 @@ function parseEmbeddedParticipants(
       totalSplits: numberOrNull(totalSplits),
       plannedMainSplitCount:
         plannedSplitCount || getReliableMainSplitCount({ finalTimeMs, status }, profile),
+      completedMainSplitCount: profile.units.length,
+      currentSplitIndex: numberOrNull(liveData.currentSplitIndex),
+      splitPlanStatus,
+      splitPlanRawSplitCount: splitPlan?.rawSplitCount ?? null,
       joinOrder: index,
       joinedAtMs: dateToMillis(participant.joinedAtDate),
       isRaceCreator: participant.user === race.creator,
@@ -579,6 +656,14 @@ function parseEmbeddedParticipants(
       splitProfileMainOnly: profile,
     };
   });
+}
+
+function getTimingMethod(liveData, race) {
+  if (liveData?.gameTime === true) return "IGT";
+  if (liveData?.gameTime === false) return "RTA";
+  if (race?.gameTime === true) return "IGT";
+  if (race?.gameTime === false) return "RTA";
+  return "";
 }
 
 function getMatchingPlannedMainSplitCount(splitPlan, totalSplits) {
@@ -1007,6 +1092,7 @@ function applyRaceComparisons(runners) {
       raceDelta: null,
       raceDeltaMs: null,
       isComparisonBaseline: false,
+      comparisonStatus: "",
     };
   });
   const disqualifiedRunners = runnersWithKeys.filter(isDisqualifiedRunner).sort(compareDisqualifiedPlacement);
@@ -1032,12 +1118,21 @@ function applyRaceComparisons(runners) {
   const baseline = ranked[0] || null;
   const rankedWithPlaces = ranked.map((runner, index) => {
     const deltaMs = baseline && runner !== baseline ? getSplitDeltaAgainstBaseline(runner, baseline) : null;
+    const comparisonStatus =
+      runner === baseline
+        ? "leader"
+        : !areTimingMethodsCompatible(runner, baseline)
+          ? "timing method mismatch"
+          : deltaMs == null
+            ? "no shared parent split"
+            : "comparable";
     return {
       ...runner,
       place: `#${index + 1}`,
       raceDeltaMs: deltaMs,
       raceDelta: deltaMs == null ? null : formatDelta(deltaMs),
       isComparisonBaseline: runner === baseline,
+      comparisonStatus,
     };
   });
 
@@ -1053,6 +1148,7 @@ function applyRaceComparisons(runners) {
         place,
         raceDelta: null,
         raceDeltaMs: null,
+        comparisonStatus: getUnrankedComparisonStatus(runner, primaryKey),
       };
     });
 
@@ -1067,12 +1163,23 @@ function applyFinishedComparisons(runners, finishedCandidates, abandonedRunners 
     .filter((runner) => !finishedNames.has(runner.username) && !isDnfRunner(runner))
     .map((runner) => {
       const isComparable = baseline ? areComparisonStructuresCompatible(runner, baseline) : false;
-      const deltaMs = isComparable ? getSplitDeltaAgainstBaseline(runner, baseline) : null;
+      const timingCompatible = baseline ? areTimingMethodsCompatible(runner, baseline) : false;
+      const deltaMs = isComparable && timingCompatible ? getSplitDeltaAgainstBaseline(runner, baseline) : null;
+      const comparisonStatus = !runner.splitProfile?.units?.length
+        ? "no completed parent split"
+        : !isComparable
+          ? "different parent split count"
+          : !timingCompatible
+            ? "timing method mismatch"
+            : deltaMs == null
+              ? "no shared parent split"
+              : "comparable";
       return {
         ...runner,
         isStructurallyComparable: isComparable,
         raceDeltaMs: deltaMs,
         raceDelta: deltaMs == null ? null : formatDelta(deltaMs),
+        comparisonStatus,
       };
     })
     .sort((a, b) => {
@@ -1085,13 +1192,16 @@ function applyFinishedComparisons(runners, finishedCandidates, abandonedRunners 
 
   let place = 0;
   const rankedFinished = finished.map((runner) => {
-    const deltaMs = baseline && runner !== baseline ? runner.finalTimeMs - baseline.finalTimeMs : null;
+    const timingCompatible = baseline ? areTimingMethodsCompatible(runner, baseline) : false;
+    const deltaMs = baseline && runner !== baseline && timingCompatible ? runner.finalTimeMs - baseline.finalTimeMs : null;
     return {
       ...runner,
       place: `#${++place}`,
       raceDeltaMs: deltaMs,
       raceDelta: deltaMs == null ? null : formatDelta(deltaMs),
       isComparisonBaseline: runner === baseline,
+      comparisonStatus:
+        runner === baseline ? "leader" : timingCompatible ? "comparable" : "timing method mismatch",
     };
   });
 
@@ -1109,6 +1219,7 @@ function applyFinishedComparisons(runners, finishedCandidates, abandonedRunners 
       raceDelta: null,
       raceDeltaMs: null,
       isComparisonBaseline: false,
+      comparisonStatus: "not comparable",
     }));
 
   return appendOutcomePlaces([...rankedFinished, ...rankedActive, ...rankedDnf], abandonedRunners, disqualifiedRunners).map(stripInternalRunnerFields);
@@ -1116,7 +1227,11 @@ function applyFinishedComparisons(runners, finishedCandidates, abandonedRunners 
 
 function applyFinishedFallbackPlaces(runners, abandonedRunners = [], disqualifiedRunners = []) {
   if (!runners.some((runner) => isFinishedRunner(runner) && runner.finalTimeMs != null)) {
-    return appendOutcomePlaces(runners, abandonedRunners, disqualifiedRunners).map(stripInternalRunnerFields);
+    const unranked = runners.map((runner) => ({
+      ...runner,
+      comparisonStatus: runner.splitProfile?.units?.length ? "not comparable" : "no completed parent split",
+    }));
+    return appendOutcomePlaces(unranked, abandonedRunners, disqualifiedRunners).map(stripInternalRunnerFields);
   }
 
   let fallbackPlace = 0;
@@ -1129,6 +1244,7 @@ function applyFinishedFallbackPlaces(runners, abandonedRunners = [], disqualifie
         raceDelta: null,
         raceDeltaMs: null,
         isComparisonBaseline: fallbackPlace === 1 && place !== "-",
+        comparisonStatus: fallbackPlace === 1 && place !== "-" ? "leader" : "not comparable",
       };
     });
 
@@ -1152,6 +1268,7 @@ function appendAbandonedPlaces(rankedRunners, abandonedRunners = []) {
     raceDelta: null,
     raceDeltaMs: null,
     isComparisonBaseline: false,
+    comparisonStatus: "abandoned",
   }));
   return [...rankedRunners, ...rankedAbandoned];
 }
@@ -1167,6 +1284,7 @@ function appendDisqualifiedPlaces(rankedRunners, disqualifiedRunners = []) {
     raceDeltaMs: null,
     isComparisonBaseline: false,
     isDisqualified: true,
+    comparisonStatus: "disqualified",
   }));
   return [...rankedRunners, ...rankedDisqualified];
 }
@@ -1184,6 +1302,12 @@ function getComparisonStructureKey(runner, profile) {
 
 function isComparableWithPrimaryKey(runner, primaryKey) {
   return runner.comparisonStructureKey === primaryKey || runner.comparisonStructureKey === "main:unknown";
+}
+
+function getUnrankedComparisonStatus(runner, primaryKey) {
+  if (!runner.splitProfile?.units?.length) return "no completed parent split";
+  if (!isComparableWithPrimaryKey(runner, primaryKey)) return "different parent split count";
+  return "not comparable";
 }
 
 function choosePrimaryComparisonKey(runners) {
@@ -1243,8 +1367,15 @@ function areComparisonStructuresCompatible(a, b) {
   return aKey === bKey || aKey === "main:unknown" || bKey === "main:unknown";
 }
 
+function areTimingMethodsCompatible(a, b) {
+  const aMethod = String(a?.timingMethod || "").trim().toUpperCase();
+  const bMethod = String(b?.timingMethod || "").trim().toUpperCase();
+  return !aMethod || !bMethod || aMethod === bMethod;
+}
+
 function getSplitDeltaAgainstBaseline(runner, baseline) {
   if (!runner?.splitProfile?.units?.length || !baseline?.splitProfile?.units?.length) return null;
+  if (!areTimingMethodsCompatible(runner, baseline)) return null;
 
   const runnerUnits = runner.splitProfile.units;
   const baselineUnits = baseline.splitProfile.units;
@@ -1506,7 +1637,7 @@ const server = http.createServer(async (req, res) => {
 
     if (requestUrl.pathname === "/api/current-race") {
       if (req.method === "GET") {
-        sendJson(res, 200, { ok: true, currentRace });
+        sendJson(res, 200, { ok: true, version: APP_VERSION, currentRace });
         return;
       }
 
@@ -1521,7 +1652,7 @@ const server = http.createServer(async (req, res) => {
           updatedAt: new Date().toISOString(),
         };
         writeState(nextRace);
-        sendJson(res, 200, { ok: true, currentRace: nextRace, race: data });
+        sendJson(res, 200, { ok: true, version: APP_VERSION, currentRace: nextRace, race: data });
         return;
       }
 
@@ -1561,6 +1692,8 @@ module.exports = {
   getRaceData,
   getMatchingPlannedMainSplitCount,
   getSplitsFileUrls,
+  makeStaleRaceData,
+  parseEmbeddedParticipants,
   parseEmbeddedPageData,
   parseLiveSplitSegmentNames,
   parseRaceHtml,
