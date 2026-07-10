@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0 - 2026-07-10
+
+- Added complete parent-split detection for nested LiveSplit layouts by reading each runner's public `.lss` plan.
+- Kept raw subsplits out of progress, compatibility, leadership, and delta calculations.
+- Added exact wall-clock split-arrival timestamps from TheRun's public race event history.
+- Changed active leadership to furthest completed parent split, then earliest real-world arrival at that split.
+- Kept displayed race deltas based on runner timer values at the latest shared parent split, allowing valid negative deltas behind the physical leader.
+- Kept finished runners ordered by final time, with compatible active runners following by live race position.
+- Added regression tests for subsplit parsing, full-plan grouping, split-event arrival matching, active leadership, negative deltas, split-count selection, and finish takeover.
+- Added a `release/TheRunRacesOverlay-v2.0.0.zip` package without modifying previous release archives.
+
 ## 1.0.4 - 2026-07-09
 
 - Removed confirmation text from abandoned rows.

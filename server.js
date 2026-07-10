@@ -7,13 +7,17 @@ const { URL } = require("node:url");
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
 const STATE_FILE = path.join(ROOT, ".overlay-state.json");
-const APP_VERSION = "1.0.4";
+const APP_VERSION = "2.0.0";
 const DEFAULT_PORT = 5179;
 const CACHE_TTL_MS = 750;
+const SPLIT_PLAN_CACHE_TTL_MS = 10 * 60 * 1000;
+const SPLIT_PLAN_FAILURE_TTL_MS = 30 * 1000;
 const MAX_RESPONSE_BYTES = 6 * 1024 * 1024;
+const MAX_SPLITS_FILE_BYTES = 32 * 1024 * 1024;
 const MAX_BODY_BYTES = 64 * 1024;
 
 const cache = new Map();
+const splitPlanCache = new Map();
 let currentRace = readState();
 
 const mimeTypes = {
@@ -125,7 +129,7 @@ async function readRaceFromRequest(req) {
   return params.get("race") || params.get("url") || "";
 }
 
-function fetchText(url, redirectsLeft = 4) {
+function fetchText(url, redirectsLeft = 4, maxResponseBytes = MAX_RESPONSE_BYTES) {
   return new Promise((resolve, reject) => {
     const request = https.get(
       url,
@@ -145,7 +149,7 @@ function fetchText(url, redirectsLeft = 4) {
             reject(new Error("Too many redirects while fetching race page."));
             return;
           }
-          resolve(fetchText(new URL(location, url).toString(), redirectsLeft - 1));
+          resolve(fetchText(new URL(location, url).toString(), redirectsLeft - 1, maxResponseBytes));
           return;
         }
 
@@ -159,8 +163,8 @@ function fetchText(url, redirectsLeft = 4) {
         let body = "";
         response.on("data", (chunk) => {
           body += chunk;
-          if (body.length > MAX_RESPONSE_BYTES) {
-            request.destroy(new Error("Race page response was unexpectedly large."));
+          if (body.length > maxResponseBytes) {
+            request.destroy(new Error("Remote response was unexpectedly large."));
           }
         });
         response.on("end", () => resolve(body));
@@ -181,19 +185,146 @@ async function getRaceData(raceId) {
 
   const sourceUrl = `https://therun.gg/races/${encodeURIComponent(raceId)}`;
   const html = await fetchText(sourceUrl);
-  const data = parseRaceHtml(html, raceId, sourceUrl);
+  const embeddedPageData = parseEmbeddedPageData(html, raceId);
+  const splitPlansByRunner = await getRaceSplitPlans(embeddedPageData.race);
+  const data = parseRaceHtml(html, raceId, sourceUrl, { embeddedPageData, splitPlansByRunner });
   cache.set(cacheKey, { time: Date.now(), data });
   return data;
 }
 
-function parseRaceHtml(html, raceId, sourceUrl) {
-  const embeddedRace = parseEmbeddedRace(html);
+async function getRaceSplitPlans(race) {
+  if (!race?.participants?.length) return new Map();
+  const game = String(race.displayGame || race.game || "").trim();
+  const category = String(race.displayCategory || race.category || "").trim();
+  if (!game || !category) return new Map();
+
+  const nestedParticipants = race.participants.filter(participantUsesSubsplits);
+  const plans = await Promise.all(
+    nestedParticipants.map(async (participant) => {
+      const plan = await getRunnerSplitPlan(participant.user, game, category);
+      return plan ? [normalizeEventUsername(participant.user), plan] : null;
+    })
+  );
+
+  return new Map(plans.filter(Boolean));
+}
+
+function participantUsesSubsplits(participant) {
+  const liveData = participant?.liveData || {};
+  const predictions = liveData.splitPredictions || participant?.splitPredictions || [];
+  const names = [
+    ...predictions.map((prediction) => prediction?.splitName),
+    liveData.currentSplitName,
+    liveData.previousSplitName,
+  ];
+  return names.some((name) => {
+    const parsed = parseSplitLabel(name);
+    return parsed.subIndex != null && parsed.total != null;
+  });
+}
+
+async function getRunnerSplitPlan(username, game, category) {
+  const cacheKey = `${normalizeEventUsername(username)}\u0000${game}\u0000${category}`;
+  const cached = splitPlanCache.get(cacheKey);
+  if (cached && Date.now() - cached.time < cached.ttl) return cached.plan;
+
+  try {
+    const runUrl = `https://therun.gg/${encodeURIComponent(username)}/${encodeURIComponent(game)}/${encodeURIComponent(category)}`;
+    const runHtml = await fetchText(runUrl);
+    const splitsFile = parseSplitsFilePath(runHtml);
+    if (!splitsFile) throw new Error("No public splits file was found for this run.");
+
+    const splitFileText = await fetchFirstAvailableText(getSplitsFileUrls(splitsFile), MAX_SPLITS_FILE_BYTES);
+    const segmentNames = parseLiveSplitSegmentNames(splitFileText);
+    const profile = buildSplitProfile(segmentNames.map((rawName) => ({ rawName })));
+    if (!profile.mainSplitCount) throw new Error("The public splits file did not contain recognizable segments.");
+
+    const plan = {
+      mainSplitCount: profile.mainSplitCount,
+      rawSplitCount: segmentNames.length,
+      hasNestedSplits: profile.hasNestedSplits,
+      splitsFile,
+    };
+    splitPlanCache.set(cacheKey, { time: Date.now(), ttl: SPLIT_PLAN_CACHE_TTL_MS, plan });
+    return plan;
+  } catch {
+    splitPlanCache.set(cacheKey, { time: Date.now(), ttl: SPLIT_PLAN_FAILURE_TTL_MS, plan: null });
+    return null;
+  }
+}
+
+function parseSplitsFilePath(html) {
+  const flightRegex = /self\.__next_f\.push\(\[1,"([\s\S]*?)"\]\)<\/script>/g;
+  for (const match of html.matchAll(flightRegex)) {
+    const decoded = parseJsonString(match[1]);
+    const splitsFileMatch = decoded.match(/"splitsFile":"([^"]+\.lss)"/i);
+    if (splitsFileMatch) return decodeJsonStringValue(splitsFileMatch[1]);
+  }
+  return "";
+}
+
+function decodeJsonStringValue(value) {
+  try {
+    return JSON.parse(`"${value}"`);
+  } catch {
+    return value;
+  }
+}
+
+function getSplitsFileUrls(splitsFile) {
+  let decodedPath = splitsFile;
+  try {
+    decodedPath = decodeURIComponent(splitsFile);
+  } catch {
+    // Keep the original path if it contains malformed percent encoding.
+  }
+  const primaryPath = decodedPath
+    .replaceAll("%", "%25")
+    .replaceAll("+++", "+%2B+")
+    .replaceAll("++", "%2B+")
+    .replaceAll("NG+", "NG%2B");
+  const baseUrl = "https://d2c9jb6sm40v74.cloudfront.net/";
+  return [`${baseUrl}${primaryPath}`, `${baseUrl}${primaryPath.replaceAll("+", "%2B")}`];
+}
+
+async function fetchFirstAvailableText(urls, maxResponseBytes = MAX_RESPONSE_BYTES) {
+  let lastError = null;
+  for (const url of urls) {
+    try {
+      return await fetchText(url, 4, maxResponseBytes);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("Could not download the public splits file.");
+}
+
+function parseLiveSplitSegmentNames(xml) {
+  const names = [];
+  for (const segmentMatch of xml.matchAll(/<Segment\b[^>]*>([\s\S]*?)<\/Segment>/gi)) {
+    const nameMatch = segmentMatch[1].match(/<Name\b[^>]*>([\s\S]*?)<\/Name>/i);
+    if (!nameMatch) continue;
+    const rawName = nameMatch[1].replace(/^<!\[CDATA\[|\]\]>$/g, "");
+    const name = decodeEntities(rawName).trim();
+    if (name) names.push(name);
+  }
+  return names;
+}
+
+function parseRaceHtml(html, raceId, sourceUrl, options = {}) {
+  const embeddedPageData = options.embeddedPageData || parseEmbeddedPageData(html, raceId);
+  const embeddedRace = embeddedPageData.race;
+  const raceEventIndex = buildRaceEventIndex(embeddedPageData.events);
   const metadata = parseMetadata(html);
-  const embeddedRunners = parseEmbeddedParticipants(embeddedRace);
+  const embeddedRunners = parseEmbeddedParticipants(
+    embeddedRace,
+    raceEventIndex,
+    options.splitPlansByRunner || new Map()
+  );
   const standings = parseStandings(html);
   const cards = parseParticipantCards(html);
   const profilesByRunner = needsChatProfileFallback(embeddedRunners)
-    ? buildProfilesByRunner(parseSplitRows(html))
+    ? buildProfilesByRunner(parseSplitRows(html, raceEventIndex))
     : new Map();
 
   const runnersByName = new Map();
@@ -253,6 +384,8 @@ function parseRaceHtml(html, raceId, sourceUrl) {
         totalSplits: runner.totalSplits ?? null,
         plannedMainSplitCount: runner.plannedMainSplitCount ?? null,
         joinOrder: runner.joinOrder ?? null,
+        joinedAtMs: runner.joinedAtMs ?? null,
+        isRaceCreator: runner.isRaceCreator === true,
         confirmationStatus: runner.confirmationStatus || "",
         latestSplit: runner.latestSplit || null,
         splitProfile: runner.splitProfile || null,
@@ -315,24 +448,27 @@ function parseMetadata(html) {
   };
 }
 
-function parseEmbeddedRace(html) {
+function parseEmbeddedPageData(html, raceId) {
+  let race = null;
+  const events = [];
+  const eventKeys = new Set();
   const flightRegex = /self\.__next_f\.push\(\[1,"([\s\S]*?)"\]\)<\/script>/g;
   for (const match of html.matchAll(flightRegex)) {
     const decoded = parseJsonString(match[1]);
-    if (!decoded || !decoded.includes('"race":')) continue;
+    if (!decoded) continue;
 
     const jsonStart = decoded.indexOf("[");
     if (jsonStart < 0) continue;
 
     try {
       const payload = JSON.parse(decoded.slice(jsonStart).trim());
-      const race = findRacePayload(payload);
-      if (race?.participants?.length) return race;
+      if (!race) race = findRacePayload(payload);
+      collectRaceEvents(payload, raceId, events, eventKeys);
     } catch {
       // Fall through to the older HTML scrapers.
     }
   }
-  return null;
+  return { race, events };
 }
 
 function parseJsonString(value) {
@@ -360,15 +496,47 @@ function findRacePayload(value) {
   return null;
 }
 
-function parseEmbeddedParticipants(race) {
+function collectRaceEvents(value, raceId, events, eventKeys) {
+  if (!value || typeof value !== "object") return;
+
+  if (
+    value.raceId === raceId &&
+    typeof value.type === "string" &&
+    value.time &&
+    (value.data == null || typeof value.data === "object")
+  ) {
+    const eventKey = `${value.type}\u0000${value.time}\u0000${JSON.stringify(value.data || {})}`;
+    if (!eventKeys.has(eventKey)) {
+      eventKeys.add(eventKey);
+      events.push(value);
+    }
+  }
+
+  const children = Array.isArray(value) ? value : Object.values(value);
+  for (const child of children) collectRaceEvents(child, raceId, events, eventKeys);
+}
+
+function parseEmbeddedParticipants(
+  race,
+  raceEventIndex = buildRaceEventIndex([]),
+  splitPlansByRunner = new Map()
+) {
   if (!race?.participants?.length) return [];
   const raceStartMs = dateToMillis(race.startTime);
   return race.participants.map((participant, index) => {
     const liveData = participant.liveData || {};
     const splitPredictions = liveData.splitPredictions || participant.splitPredictions || [];
     const totalSplits = liveData.totalSplits ?? participant.totalSplits;
-    const profile = buildSplitProfile(rowsFromSplitPredictions(splitPredictions, totalSplits));
     const rawFinalTimeMs = numberOrNull(participant.finalTime);
+    const splitRows = rowsFromSplitPredictions(
+      splitPredictions,
+      totalSplits,
+      raceEventIndex,
+      participant.user,
+      rawFinalTimeMs,
+      liveData
+    );
+    const profile = buildSplitProfile(splitRows);
     const currentTimeMs = numberOrNull(liveData.currentTime);
     const abandonedAtMs = getParticipantAbandonedAtMs(participant);
     const abandonedRaceTimeMs = getParticipantAbandonedRaceTimeMs(participant, liveData, abandonedAtMs, raceStartMs);
@@ -384,6 +552,8 @@ function parseEmbeddedParticipants(race) {
     const hasPostRaceRating = hasRatingOutcome && ratingAfter > 0;
     const displayRating = hasPostRaceRating ? ratingAfter : ratingBefore > 0 ? ratingBefore : "";
     const ratingDelta = hasPostRaceRating && ratingBefore > 0 ? ratingAfter - ratingBefore : null;
+    const splitPlan = splitPlansByRunner.get(normalizeEventUsername(participant.user));
+    const plannedSplitCount = getMatchingPlannedMainSplitCount(splitPlan, totalSplits);
 
     return {
       place: "",
@@ -398,8 +568,11 @@ function parseEmbeddedParticipants(race) {
       finalTimeMs,
       abandonedAtMs,
       totalSplits: numberOrNull(totalSplits),
-      plannedMainSplitCount: getReliableMainSplitCount({ finalTimeMs, status }, profile),
+      plannedMainSplitCount:
+        plannedSplitCount || getReliableMainSplitCount({ finalTimeMs, status }, profile),
       joinOrder: index,
+      joinedAtMs: dateToMillis(participant.joinedAtDate),
+      isRaceCreator: participant.user === race.creator,
       confirmationStatus: getConfirmationStatus(participant, race, isFinished),
       latestSplit: profile.units.at(-1) || null,
       splitProfile: profile,
@@ -408,14 +581,41 @@ function parseEmbeddedParticipants(race) {
   });
 }
 
-function rowsFromSplitPredictions(predictions, totalSplits) {
+function getMatchingPlannedMainSplitCount(splitPlan, totalSplits) {
+  if (!splitPlan?.mainSplitCount) return null;
+  const rawTotalSplitCount = numberOrNull(totalSplits);
+  if (rawTotalSplitCount != null && splitPlan.rawSplitCount !== rawTotalSplitCount) return null;
+  return splitPlan.mainSplitCount;
+}
+
+function rowsFromSplitPredictions(
+  predictions,
+  totalSplits,
+  raceEventIndex = buildRaceEventIndex([]),
+  username = "",
+  finalTimeMs = null,
+  liveData = null
+) {
   const byIndex = new Map();
+  const currentSplitIndex = numberOrNull(liveData?.currentSplitIndex);
+  const currentSplitArrivalMs = absoluteTimestampToMillis(liveData?.splitStartedAt);
   for (const prediction of predictions) {
     const splitIndex = numberOrNull(prediction.splitIndex);
     const currentTime = numberOrNull(prediction.currentTime);
     const splitName = String(prediction.splitName || "").trim();
     if (splitIndex == null || currentTime == null || currentTime <= 0 || !splitName) continue;
-    byIndex.set(splitIndex, prediction);
+    const indexedArrivalMs = getRaceEventArrivalTimeMs(
+      raceEventIndex,
+      username,
+      currentTime,
+      splitName,
+      finalTimeMs
+    );
+    const liveArrivalMs = splitIndex === currentSplitIndex ? currentSplitArrivalMs : null;
+    byIndex.set(splitIndex, {
+      ...prediction,
+      arrivalTimeMs: indexedArrivalMs ?? liveArrivalMs,
+    });
   }
 
   return [...byIndex.values()]
@@ -429,10 +629,61 @@ function rowsFromSplitPredictions(predictions, totalSplits) {
         time: millisToTime(currentTime),
         preciseTime: millisToTime(currentTime, true),
         timeMs: currentTime,
+        arrivalTimeMs: numberOrNull(prediction.arrivalTimeMs),
         percent: splitPercent(splitIndex, totalSplits),
         rawSplitIndex: splitIndex,
       };
     });
+}
+
+function buildRaceEventIndex(events) {
+  const splitArrivals = new Map();
+  const finishArrivals = new Map();
+
+  for (const event of events || []) {
+    const arrivalTimeMs = dateToMillis(event.time);
+    const username = String(event.data?.user || "").trim();
+    const splitTimeMs = numberOrNull(event.data?.time);
+    if (arrivalTimeMs == null || !username || splitTimeMs == null) continue;
+
+    if (event.type === "participant-split") {
+      const splitName = String(event.data?.splitName || "").trim();
+      if (!splitName) continue;
+      splitArrivals.set(splitEventKey(username, splitTimeMs, splitName), arrivalTimeMs);
+    }
+
+    if (event.type === "participant-finish") {
+      finishArrivals.set(finishEventKey(username, splitTimeMs), arrivalTimeMs);
+    }
+  }
+
+  return { splitArrivals, finishArrivals };
+}
+
+function getRaceEventArrivalTimeMs(index, username, splitTimeMs, splitName, finalTimeMs = null) {
+  const splitArrival = index?.splitArrivals?.get(splitEventKey(username, splitTimeMs, splitName));
+  if (splitArrival != null) return splitArrival;
+
+  if (finalTimeMs != null && Math.abs(splitTimeMs - finalTimeMs) <= 1) {
+    return index?.finishArrivals?.get(finishEventKey(username, finalTimeMs)) ?? null;
+  }
+  return null;
+}
+
+function splitEventKey(username, splitTimeMs, splitName) {
+  return `${normalizeEventUsername(username)}\u0000${Math.round(splitTimeMs)}\u0000${normalizeEventSplitName(splitName)}`;
+}
+
+function finishEventKey(username, splitTimeMs) {
+  return `${normalizeEventUsername(username)}\u0000${Math.round(splitTimeMs)}`;
+}
+
+function normalizeEventUsername(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeEventSplitName(value) {
+  return cleanTimeText(value).toLowerCase();
 }
 
 function isEmbeddedFinished(participant, liveData, rawFinalTimeMs) {
@@ -601,7 +852,7 @@ function findCardSectionEnd(html, start) {
   return markers.length ? Math.min(...markers) : html.length;
 }
 
-function parseSplitRows(html) {
+function parseSplitRows(html, raceEventIndex = buildRaceEventIndex([])) {
   const chatStart = html.indexOf("chatMessages");
   if (chatStart < 0) return [];
 
@@ -612,12 +863,16 @@ function parseSplitRows(html) {
 
   for (const match of chat.matchAll(splitRegex)) {
     const preciseTime = match[4];
+    const username = textFromHtml(match[2]);
+    const rawName = textFromHtml(match[3]);
+    const timeMs = timeToMillis(preciseTime);
     rows.push({
-      username: textFromHtml(match[2]),
-      rawName: textFromHtml(match[3]),
+      username,
+      rawName,
       time: shortTime(match[5] || match[4]),
       preciseTime,
-      timeMs: timeToMillis(preciseTime),
+      timeMs,
+      arrivalTimeMs: getRaceEventArrivalTimeMs(raceEventIndex, username, timeMs, rawName),
       percent: `${match[6]}%`,
     });
   }
@@ -647,8 +902,9 @@ function buildSplitProfile(rows) {
   const events = rows.map((row) => ({
     ...row,
     parsed: parseSplitLabel(row.rawName),
-    groupInfo: null,
   }));
+  const units = [];
+  const groupTotals = [];
   const groups = [];
   let currentGroup = null;
 
@@ -656,6 +912,8 @@ function buildSplitProfile(rows) {
     const parsed = event.parsed;
     if (!parsed.subIndex || !parsed.total) {
       currentGroup = null;
+      units.push(makeSplitUnit(event, units.length, null, parsed.name));
+      groupTotals.push(1);
       continue;
     }
 
@@ -668,66 +926,33 @@ function buildSplitProfile(rows) {
 
     if (shouldStartGroup) {
       currentGroup = {
-        events: [],
+        index: groups.length,
         total: parsed.total,
         lastSubIndex: 0,
         explicitGroup: "",
         finalName: "",
-        groupName: "",
         closed: false,
       };
       groups.push(currentGroup);
     }
 
-    currentGroup.events.push(event);
     currentGroup.lastSubIndex = parsed.subIndex;
-    event.groupInfo = currentGroup;
-
     if (parsed.group) currentGroup.explicitGroup = parsed.group;
     if (parsed.subIndex === parsed.total) {
       currentGroup.finalName = parsed.name;
       currentGroup.closed = true;
-    }
-  }
-
-  for (const group of groups) {
-    group.groupName =
-      group.explicitGroup ||
-      group.finalName ||
-      group.events[group.events.length - 1]?.parsed?.name ||
-      "Split";
-  }
-
-  const units = [];
-  const mainGroups = [];
-
-  for (const event of events) {
-    const parsed = event.parsed;
-    if (!parsed.subIndex || !parsed.total) {
-      units.push(makeSplitUnit(event, units.length, null, parsed.name));
-      mainGroups.push({ total: 1, groupName: parsed.name });
-      continue;
-    }
-
-    const group = event.groupInfo;
-    const groupIndex = groups.indexOf(group);
-    if (parsed.subIndex === parsed.total) {
-      units.push(makeSplitUnit(event, units.length, groupIndex, group?.groupName || parsed.name));
-    }
-  }
-
-  for (const group of groups) {
-    if (group.closed) {
-      mainGroups.push({ total: group.total, groupName: group.groupName });
+      const groupName = currentGroup.explicitGroup || currentGroup.finalName || parsed.name || "Split";
+      units.push(makeSplitUnit(event, units.length, currentGroup.index, groupName));
+      groupTotals.push(currentGroup.total);
     }
   }
 
   return {
     units,
-    mainSplitCount: mainGroups.length,
-    groupTotals: mainGroups.map((group) => group.total),
-    mainStructureSignature: `main:${mainGroups.length}`,
-    hasNestedSplits: mainGroups.some((group) => group.total > 1),
+    mainSplitCount: units.length,
+    groupTotals,
+    mainStructureSignature: `main:${units.length}`,
+    hasNestedSplits: events.some((event) => event.parsed.subIndex != null && event.parsed.total != null),
   };
 }
 
@@ -740,6 +965,7 @@ function makeSplitUnit(event, index, groupIndex, displayName) {
     time: shortTime(event.preciseTime || event.time),
     preciseTime: event.preciseTime,
     timeMs: event.timeMs,
+    arrivalTimeMs: event.arrivalTimeMs ?? null,
     percent: event.percent,
     rawSplitIndex: event.rawSplitIndex ?? null,
   };
@@ -751,13 +977,13 @@ function parseSplitLabel(rawName) {
   const group = groupMatch ? groupMatch[1].trim() : "";
   if (groupMatch) value = groupMatch[2].trim();
 
-  const subSplitMatch = value.match(/^(\d+)\s*\/\s*(\d+)\s+(.+)$/);
+  const subSplitMatch = value.match(/^(\d+)\s*(?:\/|\bof\b)\s*(\d+)(?:\s+(.+))?$/i);
   if (subSplitMatch) {
     return {
       group,
       subIndex: Number(subSplitMatch[1]),
       total: Number(subSplitMatch[2]),
-      name: subSplitMatch[3].trim(),
+      name: String(subSplitMatch[3] || "").trim() || value,
     };
   }
 
@@ -801,7 +1027,7 @@ function applyRaceComparisons(runners) {
   );
   const rankedCandidates = comparable.filter((runner) => !isDnfRunner(runner));
   const incompatible = contenders.filter((runner) => !rankedCandidates.includes(runner));
-  const ranked = rankedCandidates.slice().sort(compareByLatestSharedSplit);
+  const ranked = rankedCandidates.slice().sort(compareByRealTimeProgress);
 
   const baseline = ranked[0] || null;
   const rankedWithPlaces = ranked.map((runner, index) => {
@@ -840,16 +1066,20 @@ function applyFinishedComparisons(runners, finishedCandidates, abandonedRunners 
   const active = runners
     .filter((runner) => !finishedNames.has(runner.username) && !isDnfRunner(runner))
     .map((runner) => {
-      const deltaMs = baseline ? getSplitDeltaAgainstBaseline(runner, baseline) : null;
+      const isComparable = baseline ? areComparisonStructuresCompatible(runner, baseline) : false;
+      const deltaMs = isComparable ? getSplitDeltaAgainstBaseline(runner, baseline) : null;
       return {
         ...runner,
+        isStructurallyComparable: isComparable,
         raceDeltaMs: deltaMs,
         raceDelta: deltaMs == null ? null : formatDelta(deltaMs),
       };
     })
     .sort((a, b) => {
-      if (a.raceDeltaMs != null || b.raceDeltaMs != null) return (a.raceDeltaMs ?? Infinity) - (b.raceDeltaMs ?? Infinity);
-      return compareByLatestSharedSplit(a, b);
+      if (a.isStructurallyComparable !== b.isStructurallyComparable) {
+        return a.isStructurallyComparable ? -1 : 1;
+      }
+      return compareByRealTimeProgress(a, b);
     });
   const dnf = runners.filter((runner) => !finishedNames.has(runner.username) && isDnfRunner(runner));
 
@@ -971,26 +1201,46 @@ function choosePrimaryComparisonKey(runners) {
   const tiedKeys = sorted.filter((entry) => entry[1] === topCount).map((entry) => entry[0]);
   if (tiedKeys.length === 1) return tiedKeys[0];
 
+  const creatorWithKey = runners.find(
+    (runner) => runner.isRaceCreator && tiedKeys.includes(runner.comparisonStructureKey)
+  );
+  if (creatorWithKey) return creatorWithKey.comparisonStructureKey;
+
   const firstJoinedWithKey = runners
     .slice()
-    .sort((a, b) => (a.joinOrder ?? a.originalIndex) - (b.joinOrder ?? b.originalIndex))
+    .sort(compareRunnerJoinOrder)
     .find((runner) => tiedKeys.includes(runner.comparisonStructureKey));
   return firstJoinedWithKey?.comparisonStructureKey || tiedKeys[0];
 }
 
-function compareByLatestSharedSplit(a, b) {
-  const sharedIndex = getLatestSharedIndex(a, b);
-  if (sharedIndex != null) {
-    const aTime = a.splitProfile.units[sharedIndex]?.timeMs;
-    const bTime = b.splitProfile.units[sharedIndex]?.timeMs;
-    if (aTime != null && bTime != null && aTime !== bTime) return aTime - bTime;
-  }
+function compareRunnerJoinOrder(a, b) {
+  const aJoinedAt = a.joinedAtMs ?? Number.POSITIVE_INFINITY;
+  const bJoinedAt = b.joinedAtMs ?? Number.POSITIVE_INFINITY;
+  if (aJoinedAt !== bJoinedAt) return aJoinedAt - bJoinedAt;
+  return (a.joinOrder ?? a.originalIndex) - (b.joinOrder ?? b.originalIndex);
+}
 
+function compareByRealTimeProgress(a, b) {
   const aLength = a.splitProfile?.units?.length || 0;
   const bLength = b.splitProfile?.units?.length || 0;
   if (aLength !== bLength) return bLength - aLength;
 
+  const aArrivalMs = aLength ? numberOrNull(a.splitProfile.units[aLength - 1]?.arrivalTimeMs) : null;
+  const bArrivalMs = bLength ? numberOrNull(b.splitProfile.units[bLength - 1]?.arrivalTimeMs) : null;
+  if (aArrivalMs != null || bArrivalMs != null) {
+    if (aArrivalMs == null) return 1;
+    if (bArrivalMs == null) return -1;
+    if (aArrivalMs !== bArrivalMs) return aArrivalMs - bArrivalMs;
+  }
+
   return a.originalIndex - b.originalIndex;
+}
+
+function areComparisonStructuresCompatible(a, b) {
+  const aKey = a?.comparisonStructureKey || "";
+  const bKey = b?.comparisonStructureKey || "";
+  if (!aKey || !bKey) return false;
+  return aKey === bKey || aKey === "main:unknown" || bKey === "main:unknown";
 }
 
 function getSplitDeltaAgainstBaseline(runner, baseline) {
@@ -1060,6 +1310,9 @@ function stripInternalRunnerFields(runner) {
     splitProfile,
     splitProfileMainOnly,
     comparisonStructureKey,
+    isStructurallyComparable,
+    joinedAtMs,
+    isRaceCreator,
     ...publicRunner
   } = runner;
   return publicRunner;
@@ -1117,6 +1370,7 @@ function shortTime(value) {
 }
 
 function numberOrNull(value) {
+  if (value == null || (typeof value === "string" && !value.trim())) return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -1125,6 +1379,12 @@ function dateToMillis(value) {
   if (!value) return null;
   const ms = Date.parse(value);
   return Number.isFinite(ms) ? ms : null;
+}
+
+function absoluteTimestampToMillis(value) {
+  const numeric = numberOrNull(value);
+  if (numeric != null && numeric > 0) return numeric < 1e12 ? numeric * 1000 : numeric;
+  return dateToMillis(value);
 }
 
 function millisToTime(value, includeMillis = false) {
@@ -1286,7 +1546,25 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(port, "127.0.0.1", () => {
-  console.log(`TheRun OBS overlay is running: http://127.0.0.1:${port}/overlay`);
-  console.log(`Paste new race URLs at: http://127.0.0.1:${port}/control`);
-});
+if (require.main === module) {
+  server.listen(port, "127.0.0.1", () => {
+    console.log(`TheRun OBS overlay is running: http://127.0.0.1:${port}/overlay`);
+    console.log(`Paste new race URLs at: http://127.0.0.1:${port}/control`);
+  });
+}
+
+module.exports = {
+  APP_VERSION,
+  applyRaceComparisons,
+  buildRaceEventIndex,
+  buildSplitProfile,
+  getRaceData,
+  getMatchingPlannedMainSplitCount,
+  getSplitsFileUrls,
+  parseEmbeddedPageData,
+  parseLiveSplitSegmentNames,
+  parseRaceHtml,
+  parseSplitsFilePath,
+  parseSplitLabel,
+  rowsFromSplitPredictions,
+};

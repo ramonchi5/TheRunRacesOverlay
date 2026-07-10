@@ -6,7 +6,7 @@ The app runs locally, reads a public TheRun race URL, and renders a small timing
 
 ## Status
 
-Version `1.0.4` is ready for release.
+Version `2.0.0` is ready for live-race testing.
 
 ## Features
 
@@ -15,9 +15,10 @@ Version `1.0.4` is ready for release.
 - Runner names, ELO rating changes, current times, split progress, and race deltas.
 - High-resolution default rendering with `zoom=3` for sharper OBS scaling.
 - Transparent page background with semi-transparent leaderboard bands.
-- Main split comparison that collapses nested split rows into their parent split group.
+- Full split-plan detection from each nested runner's public `.lss` file, with subsplits collapsed into parent groups.
+- Active leadership based on who reached the furthest parent split first in real-world time.
+- Race deltas based on each runner's own LiveSplit time at the latest shared parent split.
 - Finished runners ordered by final time, with the fastest finisher as the baseline.
-- Live runners compared only against matching completed split positions.
 - Abandoned runners placed at the bottom; the earliest abandoner is last.
 
 ## Requirements
@@ -53,12 +54,13 @@ http://127.0.0.1:5179
 The GitHub release asset is:
 
 ```text
-release/TheRunRacesOverlay-v1.0.4.zip
+release/TheRunRacesOverlay-v2.0.0.zip
 ```
 
 The zip contains:
 
 - `public/`
+- `test/`
 - `server.js`
 - `package.json`
 - `start-overlay.bat`
@@ -68,7 +70,7 @@ The zip contains:
 - `LICENSE`
 - `NOTICE.md`
 
-Only `server.js` and `public/` are strictly required at runtime. The start scripts, package metadata, README, changelog, license, and notices are included so the release is easy to run and carries its attribution/licensing context.
+Only `server.js` and `public/` are strictly required at runtime. The tests, start scripts, package metadata, README, changelog, license, and notices are included so the release is verifiable, easy to run, and carries its attribution/licensing context.
 
 ## Set The Race
 
@@ -131,15 +133,20 @@ Width overrides accept values from `120` to `2400`. Extra width is given to the 
 
 Before anyone finishes:
 
-- Runners with comparable main split counts are ordered by their latest comparable completed main split.
-- Race deltas compare the same completed main split position only.
-- The overlay does not compare against another runner's current timer as a split delta fallback.
+- Recognized subsplits are ignored as individual checkpoints. Only a completed parent split group advances race position.
+- The overlay reads nested runners' public `.lss` plans so raw totals such as `15` and `62` can still resolve to the same parent-split count.
+- Runners with matching parent-split counts are ordered by furthest completed parent split.
+- When runners are on the same parent split, whoever reached it first in real-world time stays ahead.
+- The `LEADER` label is therefore independent of whether a runner uses IGT, RTA, or another LiveSplit timing method.
+- Race deltas still compare the runners' LiveSplit times at the latest parent split both runners have completed. A runner behind the physical leader can correctly show a green negative delta.
+- The overlay never compares one runner's completed split time against another runner's live current timer.
 
 After anyone finishes:
 
 - The fastest finished runner becomes the baseline and #1.
 - Other finished runners are ordered by final time and keep deltas against the fastest finisher.
-- Runners still racing are ordered after finished runners by their latest comparable split delta against the fastest finisher.
+- Runners still racing are ordered after finished runners by parent-split progress and real-world arrival time.
+- Compatible active runners keep deltas against the fastest finisher at the latest shared parent split.
 - Abandoned runners are ordered at the bottom. If multiple runners abandon, the later abandoner ranks above the earlier abandoner, so the first to abandon is last.
 - Disqualified runners are placed below abandoned runners with `-` and their disqualification time when available.
 - Runners with incompatible split structures remain below the comparable leaderboard with no race delta.
@@ -163,9 +170,9 @@ After anyone finishes:
 
 ## Data And Privacy
 
-This tool only makes public `GET` requests to therun.gg race pages. It does not submit race actions, modify races, or require user credentials.
+This tool only makes public `GET` requests to therun.gg pages and TheRun's public split-file CDN. It does not submit race actions, modify races, or require user credentials.
 
-The app prefers TheRun's embedded public race payload when available and falls back to visible page sections when needed.
+The app prefers TheRun's embedded public race payload when available and falls back to visible page sections when needed. Public `.lss` plans are cached locally in memory and are used only to count parent split groups; subsplits never become leaderboard checkpoints.
 
 ## Attribution And Licensing
 

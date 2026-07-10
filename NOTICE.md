@@ -4,7 +4,7 @@ This project does not vendor third-party source code, packages, fonts, images, o
 
 ## therun.gg
 
-The overlay reads public race pages from [therun.gg](https://therun.gg) and displays derived race information locally in OBS.
+The overlay reads public race and runner pages from [therun.gg](https://therun.gg), plus associated public `.lss` split files, and displays derived race information locally in OBS.
 
 TheRun, therun.gg, race data, site content, names, logos, and trademarks belong to their respective owners. This project is not affiliated with, endorsed by, or sponsored by therun.gg.
 
