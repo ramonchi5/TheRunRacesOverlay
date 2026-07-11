@@ -5,16 +5,19 @@ const {
   applyRaceComparisons,
   buildRaceEventIndex,
   buildSplitProfile,
+  getCachedRaceData,
   getMatchingPlannedMainSplitCount,
   getSplitsFileUrls,
   makeStaleRaceData,
+  normalizeRaceInput,
   parseEmbeddedParticipants,
   parseLiveSplitSegmentNames,
+  parseRaceHtml,
   parseSplitLabel,
   rowsFromSplitPredictions,
 } = require("../server");
 
-function splitRow(rawName, timeMs, arrivalTimeMs, rawSplitIndex) {
+function splitRow(rawName, timeMs, arrivalTimeMs) {
   return {
     rawName,
     time: "",
@@ -22,13 +25,12 @@ function splitRow(rawName, timeMs, arrivalTimeMs, rawSplitIndex) {
     timeMs,
     arrivalTimeMs,
     percent: "-",
-    rawSplitIndex,
   };
 }
 
 function profileFromTimes(times, arrivals) {
   return buildSplitProfile(
-    times.map((timeMs, index) => splitRow(`Split ${index + 1}`, timeMs, arrivals[index], index + 1))
+    times.map((timeMs, index) => splitRow(`Split ${index + 1}`, timeMs, arrivals[index]))
   );
 }
 
@@ -53,9 +55,16 @@ function activeRunner(username, times, arrivals, options = {}) {
     isRaceCreator: options.isRaceCreator ?? false,
     latestSplit: profile.units.at(-1) || null,
     splitProfile: profile,
-    splitProfileMainOnly: profile,
   };
 }
+
+test("accepts race URLs and strict race ids", () => {
+  assert.equal(normalizeRaceInput("16c4"), "16c4");
+  assert.equal(normalizeRaceInput("races/pnx7"), "pnx7");
+  assert.equal(normalizeRaceInput("https://therun.gg/races/16c4"), "16c4");
+  assert.throws(() => normalizeRaceInput("16c4 trailing text"), /not recognized/i);
+  assert.throws(() => normalizeRaceInput("https://example.com/races/16c4"), /only therun\.gg/i);
+});
 
 test("recognizes LiveSplit subsplit labels", () => {
   assert.deepEqual(parseSplitLabel("-{Tutorial} 2 of 5 Gourd"), {
@@ -74,11 +83,11 @@ test("recognizes LiveSplit subsplit labels", () => {
 
 test("collapses completed subsplit groups and ignores partial groups", () => {
   const profile = buildSplitProfile([
-    splitRow("-1/3 Window", 10_000, 1_000, 1),
-    splitRow("-2/3 Gourd", 20_000, 2_000, 2),
-    splitRow("{Tutorial}3/3 Geni", 30_000, 3_000, 3),
-    splitRow("Bull", 50_000, 5_000, 4),
-    splitRow("-1/2 Entry", 60_000, 6_000, 5),
+    splitRow("-1/3 Window", 10_000, 1_000),
+    splitRow("-2/3 Gourd", 20_000, 2_000),
+    splitRow("{Tutorial}3/3 Geni", 30_000, 3_000),
+    splitRow("Bull", 50_000, 5_000),
+    splitRow("-1/2 Entry", 60_000, 6_000),
   ]);
 
   assert.equal(profile.hasNestedSplits, true);
@@ -207,7 +216,6 @@ test("finished runners take over placement and final-time baseline", () => {
     finalTimeMs: 300_000,
     currentTime: "5:00",
     splitProfile: finishedProfile,
-    splitProfileMainOnly: finishedProfile,
   };
   const active = activeRunner("StillRacing", [90_000, 190_000], [900, 1_900], {
     totalSplits: 3,
@@ -302,6 +310,33 @@ test("excludes participants marked invisible", () => {
   assert.deepEqual(runners.map((runner) => runner.username), ["Visible"]);
 });
 
+test("does not reintroduce invisible participants from HTML fallbacks", () => {
+  const html = `
+    <title>The Run | Race for Test Game - Test Category</title>
+    <div id="standingsTable"><tbody>
+      <tr>
+        <td>1.</td>
+        <td><a href="/Hidden/races">Hidden</a></td>
+        <td>1500</td>
+        <td>0%</td>
+        <td>Not Ready</td>
+      </tr>
+    </tbody></div>`;
+  const embeddedPageData = {
+    race: {
+      creator: "Visible",
+      participants: [
+        { user: "Hidden", visible: false, ratingBefore: 1500, liveData: {} },
+        { user: "Visible", visible: true, ratingBefore: 1500, liveData: {} },
+      ],
+    },
+    events: [],
+  };
+
+  const race = parseRaceHtml(html, "test", "https://therun.gg/races/test", { embeddedPageData });
+  assert.deepEqual(race.runners.map((runner) => runner.username), ["Visible"]);
+});
+
 test("stale fallback retains the last successful race snapshot", () => {
   const snapshot = {
     ok: true,
@@ -317,4 +352,46 @@ test("stale fallback retains the last successful race snapshot", () => {
   assert.equal(stale.fetchedAt, snapshot.fetchedAt);
   assert.deepEqual(stale.runners, snapshot.runners);
   assert.ok(stale.servedAt);
+});
+
+test("coalesces concurrent loads for the same race", async () => {
+  const raceId = `coalesce-${Date.now()}-${Math.random()}`;
+  const snapshot = { ok: true, raceId, runners: [] };
+  let loadCount = 0;
+  let completeLoad;
+  const pendingLoad = new Promise((resolve) => {
+    completeLoad = resolve;
+  });
+  const loader = async () => {
+    loadCount += 1;
+    return pendingLoad;
+  };
+
+  const first = getCachedRaceData(raceId, loader);
+  const second = getCachedRaceData(raceId, loader);
+  assert.equal(loadCount, 1);
+
+  completeLoad(snapshot);
+  const [firstResult, secondResult] = await Promise.all([first, second]);
+  assert.equal(firstResult, snapshot);
+  assert.equal(secondResult, snapshot);
+  assert.equal(loadCount, 1);
+});
+
+test("removes internal comparison fields from public runners", () => {
+  const ranked = applyRaceComparisons([
+    activeRunner("Runner", [100_000], [1_000], {
+      totalSplits: 2,
+      plannedMainSplitCount: 2,
+    }),
+  ]);
+
+  assert.equal("splitProfile" in ranked[0], false);
+  assert.equal("joinOrder" in ranked[0], false);
+  assert.equal("abandonedAtMs" in ranked[0], false);
+  assert.deepEqual(ranked[0].latestSplit, {
+    name: "Split 1",
+    time: "",
+    percent: "-",
+  });
 });

@@ -8,13 +8,23 @@ const theme = params.get("theme") === "light" ? "light" : "dark";
 const panelMode = params.get("panel") === "1" || params.get("background") === "panel";
 const defaultOverlayWidth = 290;
 const widthParam = params.get("width");
-const overlayWidth = widthParam ? clamp(Number(widthParam), 120, 2400) : defaultOverlayWidth;
+const parsedOverlayWidth = Number(widthParam);
+const overlayWidth = widthParam && Number.isFinite(parsedOverlayWidth)
+  ? clamp(parsedOverlayWidth, 120, 2400)
+  : defaultOverlayWidth;
 const renderZoom = clamp(Number(params.get("zoom")) || Number(params.get("scale")) || 3, 1, 4);
 const titleFontSize = normalizeFontSizeParam(
   getFirstParam(["TitleFontSize", "titleFontSize", "titlefontsize", "title-font-size"]),
   "13px"
 );
 const isControlPage = window.location.pathname === "/control" || window.location.pathname === "/";
+const HTML_ENTITIES = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#039;",
+};
 
 let latestData = null;
 let lastError = null;
@@ -47,7 +57,7 @@ window.addEventListener("beforeunload", () => {
   if (controlPollTimer) window.clearInterval(controlPollTimer);
 });
 
-function renderControl(message = "") {
+function renderControl(message = "", isError = false) {
   const draftRaceInput = app.querySelector("#raceUrl")?.value;
   app.className = "setup";
   const overlayUrl = `${window.location.origin}/overlay`;
@@ -62,7 +72,9 @@ function renderControl(message = "") {
           <input id="raceUrl" name="race" autocomplete="off" placeholder="https://therun.gg/races/16c4" value="${escapeHtml(
             draftRaceInput ?? current?.sourceUrl ?? ""
           )}" />
-          <button type="submit">${controlState?.saving ? "Saving..." : "Set Race"}</button>
+          <button type="submit" ${controlState?.saving ? "disabled" : ""}>${
+            controlState?.saving ? "Saving..." : "Set Race"
+          }</button>
         </div>
       </form>
       <div class="controlGrid">
@@ -75,13 +87,18 @@ function renderControl(message = "") {
           <div class="controlValue">${escapeHtml(current?.title || current?.raceId || "None selected")}</div>
         </div>
       </div>
-      ${message ? `<div class="controlMessage">${escapeHtml(message)}</div>` : ""}
+      ${
+        message
+          ? `<div class="controlMessage${isError ? " isError" : ""}">${escapeHtml(message)}</div>`
+          : ""
+      }
       ${renderControlDiagnostics()}
     </section>
   `;
 
   app.querySelector("form").addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (controlState?.saving) return;
     const value = new FormData(event.currentTarget).get("race");
     if (!value) return;
     await saveCurrentRace(value);
@@ -92,15 +109,13 @@ function renderControl(message = "") {
 
 async function loadCurrentRace() {
   try {
-    const response = await fetch("/api/current-race", { cache: "no-store" });
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    const data = await fetchJson("/api/current-race");
     controlState = data;
     renderControl();
     await loadControlDiagnostics();
   } catch (error) {
     controlState = { ok: false, currentRace: null };
-    renderControl(error.message || String(error));
+    renderControl(error.message || String(error), true);
   }
 }
 
@@ -109,20 +124,18 @@ async function saveCurrentRace(race) {
   renderControl();
 
   try {
-    const response = await fetch("/api/current-race", {
+    const data = await fetchJson("/api/current-race", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ race }),
     });
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
     controlState = { ok: true, version: data.version, currentRace: data.currentRace };
     controlDiagnostics = data.race || null;
     diagnosticsError = "";
     renderControl("Race updated. OBS will refresh on its next poll.");
   } catch (error) {
     controlState = { ...(controlState || {}), saving: false };
-    renderControl(error.message || String(error));
+    renderControl(error.message || String(error), true);
   }
 }
 
@@ -134,15 +147,14 @@ async function loadControlDiagnostics({ silent = false } = {}) {
   if (!silent) renderControl();
 
   try {
-    const response = await fetch(`/api/race?race=${encodeURIComponent(raceId)}&diagnostics=${Date.now()}`, {
-      cache: "no-store",
-    });
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    const data = await fetchJson(`/api/race?race=${encodeURIComponent(raceId)}`);
+    if (controlState?.currentRace?.raceId !== raceId) return;
     controlDiagnostics = data;
     diagnosticsError = "";
   } catch (error) {
-    diagnosticsError = error.message || String(error);
+    if (controlState?.currentRace?.raceId === raceId) {
+      diagnosticsError = error.message || String(error);
+    }
   } finally {
     diagnosticsLoading = false;
     if (silent) {
@@ -151,6 +163,13 @@ async function loadControlDiagnostics({ silent = false } = {}) {
       renderControl();
     }
   }
+}
+
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, { cache: "no-store", ...options });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  return data;
 }
 
 function refreshControlDiagnosticsSection() {
@@ -301,7 +320,8 @@ function renderOverlayShell() {
   }
 
   const runners = latestData.runners.slice(0, limit);
-  const title = `${latestData.category || latestData.title || `Race ${latestData.raceId}`} Race`;
+  const titleSource = latestData.category || latestData.title || `Race ${latestData.raceId}`;
+  const title = /\brace$/i.test(titleSource.trim()) ? titleSource : `${titleSource} Race`;
   const raceProgress = getLeaderRaceProgress(runners);
   const connectionWarning = lastError || (latestData.stale ? latestData.staleReason || "Using last good data" : "");
 
@@ -330,7 +350,7 @@ function renderOverlayShell() {
     </section>
   `;
 
-  pendingSplitHighlights = new Set();
+  pendingSplitHighlights.clear();
 }
 
 function renderRunner(runner) {
@@ -352,7 +372,6 @@ function renderRunner(runner) {
   const isNotReady = /^not ready$/i.test(runner.status || "") && !latestSplit;
   const isPreRaceStatus = isReady || isNotReady;
   const confirmation = runner.confirmationStatus === "confirmed" ? "confirmed" : "waiting for confirmation";
-  const isDnf = isDisqualified || /dnf|abandoned|forfeit/i.test(`${runner.status} ${runner.currentTime}`);
   const ratingDelta = runner.ratingDelta
     ? `<span class="runnerRatingDelta ${runner.ratingDelta.startsWith("-") ? "down" : "up"}">${escapeHtml(
         runner.ratingDelta
@@ -371,7 +390,7 @@ function renderRunner(runner) {
   const highlightClass = pendingSplitHighlights.has(runner.username) ? " justSplit" : "";
 
   return `
-    <article class="runner ${isDnf ? "isDnf" : ""}${highlightClass}">
+    <article class="runner${highlightClass}">
       <div class="place">${escapeHtml(place)}</div>
       <div class="runnerInfo">
         <span class="runnerName">
@@ -423,13 +442,9 @@ async function refreshRace() {
 
   try {
     const endpoint = fixedRaceInput
-      ? `/api/race?race=${encodeURIComponent(fixedRaceInput)}&now=${Date.now()}`
-      : `/api/race?now=${Date.now()}`;
-    const response = await fetch(endpoint, { cache: "no-store" });
-    const data = await response.json();
-    if (!response.ok || !data.ok) {
-      throw new Error(data.error || `HTTP ${response.status}`);
-    }
+      ? `/api/race?race=${encodeURIComponent(fixedRaceInput)}`
+      : "/api/race";
+    const data = await fetchJson(endpoint);
     pendingSplitHighlights = detectParentSplitChanges(latestData, data);
     latestData = data;
     lastError = null;
@@ -519,14 +534,5 @@ function clamp(value, min, max) {
 }
 
 function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => {
-    const map = {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;",
-    };
-    return map[char];
-  });
+  return String(value ?? "").replace(/[&<>"']/g, (char) => HTML_ENTITIES[char]);
 }

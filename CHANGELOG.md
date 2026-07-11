@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.1 - 2026-07-10
+## 2.0.1 - 2026-07-11
 
 - Excluded participants that TheRun marks `visible: false`.
 - Added timing-method detection and suppressed race deltas between mixed IGT/RTA runners while preserving physical race order.
@@ -9,7 +9,11 @@
 - Added compact `SPLIT x/y` parent-split progress beneath the title.
 - Added a brief row highlight when a runner completes a parent split.
 - Added a small red indicator before names of runners that TheRun reports as streaming.
-- Added regression tests for mixed timing methods, invisible participants, and stale-data fallback.
+- Coalesced simultaneous overlay/control polls so they share one upstream TheRun request.
+- Prevented a delayed diagnostics response for an old race from replacing diagnostics for a newly selected race.
+- Removed obsolete dual-profile fields, unreachable ranking fallback code, internal-only API fields, and unused CSS.
+- Hardened the local control endpoint to same-origin JSON use and made race-id parsing reject trailing junk.
+- Added regression tests for mixed timing methods, invisible participants, stale-data fallback, request coalescing, strict race ids, and public payload cleanup.
 - Added a `release/TheRunRacesOverlay-v2.0.1.zip` package without modifying previous release archives.
 
 ## 2.0.0 - 2026-07-10
