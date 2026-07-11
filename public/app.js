@@ -41,6 +41,11 @@ document.documentElement.dataset.theme = theme;
 document.documentElement.style.setProperty("--overlay-width", `${overlayWidth}px`);
 document.documentElement.style.setProperty("--render-zoom", renderZoom);
 document.documentElement.style.setProperty("--title-font-size", titleFontSize);
+document.documentElement.style.setProperty("--fancy-outline-size", toRenderedPixelSize(3));
+document.documentElement.style.setProperty("--fancy-outline-spread", toRenderedPixelSize(1.5));
+document.documentElement.style.setProperty("--fancy-shadow-near", toRenderedPixelSize(1));
+document.documentElement.style.setProperty("--fancy-shadow-offset", toRenderedPixelSize(2));
+document.documentElement.style.setProperty("--fancy-shadow-far", toRenderedPixelSize(3));
 
 if (isControlPage) {
   renderControl();
@@ -304,7 +309,7 @@ function renderOverlayShell() {
   if (!latestData && !lastError) {
     app.innerHTML = `
       <section class="overlay ${panelMode ? "overlayPanel" : ""} isLoading">
-        <div class="statusLine"><span class="pulse"></span><span>Loading race...</span></div>
+        <div class="statusLine"><span class="pulse"></span><span class="fancyText">Loading race...</span></div>
       </section>
     `;
     return;
@@ -313,7 +318,9 @@ function renderOverlayShell() {
   if (lastError && !latestData) {
     app.innerHTML = `
       <section class="overlay ${panelMode ? "overlayPanel" : ""} hasError">
-        <div class="statusLine"><span class="statusDot error"></span><span>${escapeHtml(lastError)}</span></div>
+        <div class="statusLine"><span class="statusDot error"></span><span class="fancyText">${escapeHtml(
+          lastError
+        )}</span></div>
       </section>
     `;
     return;
@@ -331,8 +338,8 @@ function renderOverlayShell() {
         showTitle
           ? `<header class="overlayHeader">
               <div class="titleBlock">
-                <div class="raceTitle">${escapeHtml(title)}</div>
-                ${raceProgress ? `<div class="raceProgress">${escapeHtml(raceProgress)}</div>` : ""}
+                <div class="raceTitle fancyText">${escapeHtml(title)}</div>
+                ${raceProgress ? `<div class="raceProgress fancyText">${escapeHtml(raceProgress)}</div>` : ""}
               </div>
             </header>`
           : ""
@@ -373,11 +380,15 @@ function renderRunner(runner) {
   const isPreRaceStatus = isReady || isNotReady;
   const confirmation = runner.confirmationStatus === "confirmed" ? "confirmed" : "waiting for confirmation";
   const ratingDelta = runner.ratingDelta
-    ? `<span class="runnerRatingDelta ${runner.ratingDelta.startsWith("-") ? "down" : "up"}">${escapeHtml(
+    ? `<span class="runnerRatingDelta fancyText ${runner.ratingDelta.startsWith("-") ? "down" : "up"}">${escapeHtml(
         runner.ratingDelta
       )}</span>`
     : "";
-  const rating = runner.rating ? `<sup class="runnerRating">${escapeHtml(runner.rating)}${ratingDelta}</sup>` : "";
+  const rating = runner.rating
+    ? `<sup class="runnerRating"><span class="runnerRatingValue fancyText">${escapeHtml(
+        runner.rating
+      )}</span>${ratingDelta}</sup>`
+    : "";
   const deltaLabel = runner.raceDelta || (runner.isComparisonBaseline ? "Leader" : "-");
   const deltaClass = runner.raceDelta
     ? runner.raceDeltaMs < 0
@@ -391,11 +402,11 @@ function renderRunner(runner) {
 
   return `
     <article class="runner${highlightClass}">
-      <div class="place">${escapeHtml(place)}</div>
+      <div class="place"><span class="placeText fancyText">${escapeHtml(place)}</span></div>
       <div class="runnerInfo">
         <span class="runnerName">
           ${runner.streaming ? '<span class="streamingIndicator" aria-label="Live stream"></span>' : ""}
-          <span class="runnerNameText">${escapeHtml(runner.username)}</span>
+          <span class="runnerNameText fancyText">${escapeHtml(runner.username)}</span>
           ${rating}
         </span>
         ${
@@ -410,26 +421,28 @@ function renderRunner(runner) {
                           ? "isReady"
                           : "isNotReady"
                         : "isFinished"
-                  }">${escapeHtml(isDisqualified ? "Disqualified" : isAbandoned ? "Abandoned" : isPreRaceStatus ? runner.status : "Finished")}</span>
+                  } fancyText">${escapeHtml(isDisqualified ? "Disqualified" : isAbandoned ? "Abandoned" : isPreRaceStatus ? runner.status : "Finished")}</span>
                   ${
                     isDisqualified
-                      ? `<span class="outcomeConfirmation">(${escapeHtml(disqualificationReason || "no reason given")})</span>`
+                      ? `<span class="outcomeConfirmation fancyText">(${escapeHtml(
+                          disqualificationReason || "no reason given"
+                        )})</span>`
                       : isPreRaceStatus || isAbandoned
                         ? ""
-                        : `<span class="outcomeConfirmation">(${escapeHtml(confirmation)})</span>`
+                        : `<span class="outcomeConfirmation fancyText">(${escapeHtml(confirmation)})</span>`
                   }
                 </span>
               </span>`
             : `<span class="splitMeta">
-                <span class="splitPercent">${escapeHtml(percent)}</span>
-                <span class="splitDetail">${escapeHtml(splitDetail)}</span>
+                <span class="splitPercent fancyText">${escapeHtml(percent)}</span>
+                <span class="splitDetail fancyText">${escapeHtml(splitDetail)}</span>
               </span>`
         }
       </div>
       <div class="runnerStats">
         <div class="timingLine">
-          <div class="raceDelta ${deltaClass}">${escapeHtml(deltaLabel)}</div>
-          <span class="currentTime${currentTimeClass}">${escapeHtml(currentTime)}</span>
+          <div class="raceDelta fancyText ${deltaClass}">${escapeHtml(deltaLabel)}</div>
+          <span class="currentTime fancyText${currentTimeClass}">${escapeHtml(currentTime)}</span>
         </div>
       </div>
     </article>
@@ -531,6 +544,10 @@ function normalizeFontSizeParam(value, fallback) {
 function clamp(value, min, max) {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, value));
+}
+
+function toRenderedPixelSize(pixels) {
+  return `${Number((pixels / renderZoom).toFixed(4))}px`;
 }
 
 function escapeHtml(value) {

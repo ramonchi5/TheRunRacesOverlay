@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.2 - 2026-07-11
+
+- Added an always-on vertical three-color gradient to every overlay text element, preserving each element's existing semantic color in the middle.
+- Added the FancyText-equivalent 3-pixel semi-transparent black outline.
+- Added the FancyText-equivalent normal blurred black shadow at offset `2`, size `100`, and strength `8`.
+- Applied the foreground treatment to the live-stream indicator while leaving all leaderboard backgrounds unchanged.
+- Added a `release/TheRunRacesOverlay-v2.0.2.zip` package without modifying previous release archives.
+
 ## 2.0.1 - 2026-07-11
 
 - Excluded participants that TheRun marks `visible: false`.

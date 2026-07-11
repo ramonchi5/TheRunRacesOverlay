@@ -6,7 +6,7 @@ The app runs locally, reads a public TheRun race URL, and renders a small timing
 
 ## Status
 
-Version `2.0.1` is ready for live-race testing.
+Version `2.0.2` is ready for live-race testing.
 
 ## Features
 
@@ -24,6 +24,7 @@ Version `2.0.1` is ready for live-race testing.
 - Control-page diagnostics for timing method, split-plan matching, parent-split progress, and delta comparability.
 - Compact parent-split progress, split-completion highlights, and live-stream dots on the overlay.
 - Last successful race data remains on screen during temporary TheRun connection failures.
+- Static FancyText-style gradients, outlines, and shadows across all overlay text and live indicators.
 
 ## Requirements
 
@@ -58,7 +59,7 @@ http://127.0.0.1:5179
 The GitHub release asset is:
 
 ```text
-release/TheRunRacesOverlay-v2.0.1.zip
+release/TheRunRacesOverlay-v2.0.2.zip
 ```
 
 The zip contains:
@@ -178,6 +179,7 @@ After anyone finishes:
 - The race title is centered, uppercase, transparent behind the text, wraps onto extra lines instead of being abbreviated, and can be resized with `TitleFontSize`.
 - The row background padding is balanced on both sides, matching the space before the position tile with the space after the current time.
 - Participants that TheRun marks `visible: false` are excluded from the leaderboard.
+- Overlay text uses an always-on vertical `white -> existing color -> dark gray` gradient, semi-transparent black outline, and fixed blurred black shadow. Row, title, and position backgrounds are not affected.
 
 ## Data And Privacy
 

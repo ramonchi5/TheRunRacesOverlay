@@ -5,6 +5,11 @@
   font-size: 16px;
   letter-spacing: 0;
   --render-zoom: 3;
+  --fancy-outline-size: 1px;
+  --fancy-outline-spread: 0.5px;
+  --fancy-shadow-near: 0.3333px;
+  --fancy-shadow-offset: 0.6667px;
+  --fancy-shadow-far: 1px;
 }
 
 * {
@@ -41,9 +46,19 @@ body {
   box-shadow: none;
   overflow: hidden;
   position: relative;
-  text-shadow:
-    0 1px 1px rgba(0, 0, 0, 0.95),
-    0 0 3px rgba(255, 255, 255, 0.08);
+}
+
+.overlay .fancyText {
+  background-image: linear-gradient(to bottom, #ffffff 0%, currentColor 50%, #404040 100%);
+  background-repeat: no-repeat;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: var(--fancy-outline-size) rgba(0, 0, 0, 0.588);
+  paint-order: stroke fill;
+  filter: drop-shadow(
+    var(--fancy-shadow-offset) var(--fancy-shadow-offset) var(--fancy-shadow-near) #000000
+  );
 }
 
 .overlayPanel {
@@ -53,7 +68,6 @@ body {
   border: 1px solid rgba(180, 219, 178, 0.28);
   border-radius: 8px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
-  text-shadow: none;
 }
 
 [data-theme="light"] .overlayPanel {
@@ -170,6 +184,10 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.placeText {
+  display: inline-block;
+}
+
 .runnerInfo {
   display: grid;
   gap: 1px;
@@ -253,6 +271,9 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
+}
+
+.diagnosticLiveDot {
   background: #ff4545;
   box-shadow: 0 0 5px rgba(255, 69, 69, 0.8);
 }
@@ -260,6 +281,14 @@ body {
 .streamingIndicator {
   align-self: flex-start;
   margin: 1px 4px 0 0;
+  background: linear-gradient(to bottom, #ffffff 0%, #ff4545 50%, #404040 100%);
+  box-shadow:
+    0 0 0 var(--fancy-outline-spread) rgba(0, 0, 0, 0.588),
+    var(--fancy-shadow-near) var(--fancy-shadow-offset) 0 rgba(0, 0, 0, 0.91),
+    var(--fancy-shadow-far) var(--fancy-shadow-offset) 0 rgba(0, 0, 0, 0.91),
+    var(--fancy-shadow-offset) var(--fancy-shadow-near) 0 rgba(0, 0, 0, 0.91),
+    var(--fancy-shadow-offset) var(--fancy-shadow-far) 0 rgba(0, 0, 0, 0.91),
+    var(--fancy-shadow-offset) var(--fancy-shadow-offset) 0 #000000;
 }
 
 .currentTime {
