@@ -3,8 +3,8 @@
 ## 2.0.2 - 2026-07-11
 
 - Added an always-on vertical three-color gradient to every overlay text element, preserving each element's existing semantic color in the middle.
-- Added the FancyText-equivalent 3-pixel semi-transparent black outline.
-- Added the FancyText-equivalent normal blurred black shadow at offset `2`, size `100`, and strength `8`.
+- Added a very thin semi-transparent black outline tuned to stay subtle on both main labels and small ELO text.
+- Added a wider, softer offset black shadow that separates the text from video without darkening the gradient fill.
 - Applied the foreground treatment to the live-stream indicator while leaving all leaderboard backgrounds unchanged.
 - Added a `release/TheRunRacesOverlay-v2.0.2.zip` package without modifying previous release archives.
 

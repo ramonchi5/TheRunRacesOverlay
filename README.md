@@ -24,7 +24,7 @@ Version `2.0.2` is ready for live-race testing.
 - Control-page diagnostics for timing method, split-plan matching, parent-split progress, and delta comparability.
 - Compact parent-split progress, split-completion highlights, and live-stream dots on the overlay.
 - Last successful race data remains on screen during temporary TheRun connection failures.
-- Static FancyText-style gradients, outlines, and shadows across all overlay text and live indicators.
+- Static three-color gradients, subtle outlines, and soft shadows across all overlay text and live indicators.
 
 ## Requirements
 
@@ -179,7 +179,7 @@ After anyone finishes:
 - The race title is centered, uppercase, transparent behind the text, wraps onto extra lines instead of being abbreviated, and can be resized with `TitleFontSize`.
 - The row background padding is balanced on both sides, matching the space before the position tile with the space after the current time.
 - Participants that TheRun marks `visible: false` are excluded from the leaderboard.
-- Overlay text uses an always-on vertical `white -> existing color -> dark gray` gradient, semi-transparent black outline, and fixed blurred black shadow. Row, title, and position backgrounds are not affected.
+- Overlay text uses an always-on vertical `white -> existing color -> dark gray` gradient, a very thin semi-transparent black outline, and a soft offset black shadow. Row, title, and position backgrounds are not affected.
 
 ## Data And Privacy
 

@@ -41,10 +41,11 @@ document.documentElement.dataset.theme = theme;
 document.documentElement.style.setProperty("--overlay-width", `${overlayWidth}px`);
 document.documentElement.style.setProperty("--render-zoom", renderZoom);
 document.documentElement.style.setProperty("--title-font-size", titleFontSize);
-document.documentElement.style.setProperty("--fancy-outline-size", toRenderedPixelSize(3));
+document.documentElement.style.setProperty("--fancy-outline-size", toRenderedPixelSize(0.75));
 document.documentElement.style.setProperty("--fancy-outline-spread", toRenderedPixelSize(1.5));
 document.documentElement.style.setProperty("--fancy-shadow-near", toRenderedPixelSize(1));
 document.documentElement.style.setProperty("--fancy-shadow-offset", toRenderedPixelSize(2));
+document.documentElement.style.setProperty("--fancy-shadow-blur", toRenderedPixelSize(2));
 document.documentElement.style.setProperty("--fancy-shadow-far", toRenderedPixelSize(3));
 
 if (isControlPage) {

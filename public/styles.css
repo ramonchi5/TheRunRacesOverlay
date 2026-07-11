@@ -5,10 +5,11 @@
   font-size: 16px;
   letter-spacing: 0;
   --render-zoom: 3;
-  --fancy-outline-size: 1px;
+  --fancy-outline-size: 0.25px;
   --fancy-outline-spread: 0.5px;
   --fancy-shadow-near: 0.3333px;
   --fancy-shadow-offset: 0.6667px;
+  --fancy-shadow-blur: 0.6667px;
   --fancy-shadow-far: 1px;
 }
 
@@ -57,7 +58,7 @@ body {
   -webkit-text-stroke: var(--fancy-outline-size) rgba(0, 0, 0, 0.588);
   paint-order: stroke fill;
   filter: drop-shadow(
-    var(--fancy-shadow-offset) var(--fancy-shadow-offset) var(--fancy-shadow-near) #000000
+    var(--fancy-shadow-offset) var(--fancy-shadow-offset) var(--fancy-shadow-blur) #000000
   );
 }
 
