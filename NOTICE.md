@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-This project does not vendor third-party source code, packages, fonts, images, or game assets.
+The Node.js backend and Browser Source frontend are original MIT-licensed code. The optional native OBS source is a separate GPL-2.0-or-later component because it links to OBS Studio's `libobs`.
 
 ## therun.gg
 
@@ -16,8 +16,12 @@ Node.js is required to run the local server, but it is not bundled in this repos
 
 ## OBS Studio
 
-OBS Studio is used by streamers as the host application for the Browser Source, but OBS Studio is not bundled in this repository. OBS Studio is distributed under its own license by the OBS Project.
+OBS Studio hosts both the Browser Source and the optional native source. OBS Studio is not bundled in this repository and is distributed by the OBS Project under GPL-2.0-or-later.
+
+The native source build infrastructure under `cmake/` and `.github/` is adapted from the official [OBS Plugin Template](https://github.com/obsproject/obs-plugintemplate), distributed under GPL-2.0. Its complete license is included as `LICENSE-OBS-PLUGIN`.
+
+The native source code under `src/`, its locale data under `data/`, and resulting plugin binaries are distributed under GPL-2.0-or-later. The existing Node.js and browser overlay remain under the repository's MIT `LICENSE`.
 
 ## Implementation Notes
 
-The overlay code was written for this repository using platform APIs and Node.js standard-library modules. No third-party implementation code was copied into this project.
+The race logic, Browser Source frontend, native renderer, and backend client were written for this repository. The native build scaffolding is derived from the official OBS Plugin Template as described above; no OBS Studio implementation source is included.

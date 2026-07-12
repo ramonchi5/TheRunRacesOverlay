@@ -1,8 +1,8 @@
 {
   "name": "therun-obs-overlay",
-  "version": "2.0.2",
+  "version": "3.0.2",
   "private": true,
-  "description": "Small OBS Browser Source overlay for therun.gg race standings.",
+  "description": "Native OBS source and local race-data backend for therun.gg standings.",
   "license": "MIT",
   "repository": {
     "type": "git",

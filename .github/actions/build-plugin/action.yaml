@@ -1,0 +1,27 @@
+name: Set up and build the Windows plugin
+description: Builds and installs the native TheRun source for Windows x64
+inputs:
+  target:
+    description: Target architecture
+    required: false
+    default: x64
+  config:
+    description: CMake build configuration
+    required: false
+    default: RelWithDebInfo
+runs:
+  using: composite
+  steps:
+    - name: Run Windows build
+      shell: pwsh
+      run: |
+        if ($Env:RUNNER_DEBUG -ne $null) {
+          Set-PSDebug -Trace 1
+        }
+
+        $buildArgs = @{
+          Target = '${{ inputs.target }}'
+          Configuration = '${{ inputs.config }}'
+        }
+
+        .github/scripts/Build-Windows.ps1 @buildArgs

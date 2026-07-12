@@ -1,0 +1,46 @@
+name: Build OBS Plugin
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [Fancy]
+    paths:
+      - ".github/actions/build-plugin/**"
+      - ".github/scripts/**"
+      - ".github/workflows/build-obs-plugin.yml"
+      - "cmake/**"
+      - "data/**"
+      - "src/**"
+      - "buildspec.json"
+      - "CMakeLists.txt"
+      - "CMakePresets.json"
+
+jobs:
+  windows-x64:
+    name: Windows x64
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Test shared race backend
+        run: npm test
+
+      - name: Build native source
+        uses: ./.github/actions/build-plugin
+        with:
+          target: x64
+          config: RelWithDebInfo
+
+      - name: Upload native source
+        uses: actions/upload-artifact@v4
+        with:
+          name: TheRunRacesOverlay-v3.0.2-obs-windows-x64
+          path: release/RelWithDebInfo/**
+          if-no-files-found: error

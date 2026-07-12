@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.2 - 2026-07-12
+
+- Added a native Windows x64 OBS source that renders the leaderboard directly with GDI+ instead of a Browser Source/CEF capture.
+- Added native source properties for race selection, output dimensions, typography, opacity, gradients, shadows, outlines, and polling.
+- Reused the local Node.js backend so the native and browser editions share the same tested race ordering, parent-split, delta, and stale-data behavior.
+- Made the native outline optional and disabled by default, kept thin ELO text solid-colored, and moved depth into a multi-sample shadow drawn behind each glyph.
+- Added a `Fancy` release line for native v3 builds while preserving `main` as the local-URL v2 line.
+
 ## 2.0.2 - 2026-07-11
 
 - Added an always-on vertical three-color gradient to every overlay text element, preserving each element's existing semantic color in the middle.

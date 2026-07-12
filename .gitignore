@@ -1,1 +1,4 @@
 .overlay-state.json
+.deps/
+build_x64/
+release/RelWithDebInfo/

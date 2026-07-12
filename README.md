@@ -1,16 +1,19 @@
 # TheRun Races Overlay
 
-Compact OBS Browser Source overlay for live races on [therun.gg](https://therun.gg).
+Compact native OBS source for live races on [therun.gg](https://therun.gg), with the original Browser Source available as a fallback.
 
-The app runs locally, reads a public TheRun race URL, and renders a small timing-tower style leaderboard with runner names, ratings, current times, race deltas, and finish/abandon status.
+The local backend reads a public TheRun race URL. OBS can display the resulting timing-tower leaderboard through the native Windows source or the original browser overlay.
 
 ## Status
 
-Version `2.0.2` is ready for live-race testing.
+Version `3.0.2` is the native OBS plugin line and is ready for build validation and live-race testing.
+
+The `Fancy` branch contains v3 releases. The `main` branch remains the v2 local-URL/Browser Source line; the released v2.0.2 package is unchanged.
 
 ## Features
 
-- Local OBS Browser Source overlay; no OBS plugin install required.
+- Native Windows OBS source with direct GDI+ rendering and in-OBS appearance controls.
+- Browser Source fallback with no OBS plugin installation required.
 - Control page for pasting each new TheRun race URL without changing the OBS source.
 - Runner names, ELO rating changes, current times, split progress, and race deltas.
 - High-resolution default rendering with `zoom=3` for sharper OBS scaling.
@@ -29,12 +32,13 @@ Version `2.0.2` is ready for live-race testing.
 ## Requirements
 
 - Node.js 18 or newer.
-- OBS Studio with a Browser Source.
+- OBS Studio 31 or newer on Windows x64 for the native source.
+- Any OBS Studio version with Browser Source support for the browser fallback.
 - A public race page from therun.gg.
 
 No therun.gg login is needed.
 
-## Start
+## Start Backend
 
 Double-click:
 
@@ -54,16 +58,35 @@ The local server starts at:
 http://127.0.0.1:5179
 ```
 
-## Release Package
+The native source deliberately reuses this backend so the tested split/subsplit, ordering, delta, and stale-data behavior has one implementation. It replaces the visual layer, not the race logic.
 
-The GitHub release asset is:
+## Native OBS Source
+
+Install the Windows x64 plugin package into OBS, restart OBS, then add this source:
 
 ```text
-release/TheRunRacesOverlay-v2.0.2.zip
+TheRun Race Leaderboard
+```
+
+Paste a full TheRun race URL or race ID directly into the source properties. An empty race field follows the race selected at `http://127.0.0.1:5179/control`.
+
+The source properties provide controls for output width, row height and gaps, title visibility and size, font family and scale, background opacity, gradients, shadow offset/blur/opacity, optional outline size, and polling interval. The outline defaults to `0`; ELO ratings use solid colors instead of gradients.
+
+For the sharpest result, set **Output width** close to the source's final width on the OBS canvas. This avoids rendering a large texture and then heavily reducing it.
+
+Implementation, build, and installation details are documented in [`OBS-PLUGIN.md`](OBS-PLUGIN.md).
+
+## Release Package
+
+The v3 GitHub release asset is:
+
+```text
+release/TheRunRacesOverlay-v3.0.2-OBS-Plugin-Windows-x64.zip
 ```
 
 The zip contains:
 
+- `therun-races-overlay/` (the native OBS plugin)
 - `public/`
 - `test/`
 - `server.js`
@@ -75,7 +98,7 @@ The zip contains:
 - `LICENSE`
 - `NOTICE.md`
 
-Only `server.js` and `public/` are strictly required at runtime. The tests, start scripts, package metadata, README, changelog, license, and notices are included so the release is verifiable, easy to run, and carries its attribution/licensing context.
+The plugin folder, `server.js`, and `public/` are required for the native source: the plugin draws the leaderboard while the local backend supplies the normalized race data. The tests, start scripts, package metadata, README, changelog, licenses, and notices are included so the release is verifiable, easy to run, and carries its attribution/licensing context.
 
 ## Set The Race
 
@@ -95,7 +118,7 @@ The OBS source keeps the same overlay URL and updates on its next poll.
 
 The control page also contains a diagnostics table. It reports the data currently used for each visible runner, including timing method, completed/planned parent splits, public split-plan status, and whether a race delta is comparable. Diagnostics never appear in the OBS overlay.
 
-## OBS Setup
+## Browser Source Setup
 
 Add an OBS Browser Source:
 
