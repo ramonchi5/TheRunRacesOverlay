@@ -9,6 +9,7 @@
 - Added a release installer for OBS's recommended `C:\ProgramData\obs-studio\plugins` directory.
 - Added English and Spanish labels for the native OBS source properties.
 - Added a `Fancy` release line for native v3 builds while preserving `main` as the local-URL v2 line.
+- Added a `release/TheRunRacesOverlay-v3.0.2-OBS-Plugin-Windows-x64.zip` package without modifying previous release archives.
 
 ## 2.0.2 - 2026-07-11
 

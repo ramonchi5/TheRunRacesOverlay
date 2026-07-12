@@ -109,6 +109,7 @@ The zip contains:
 - `start-overlay.bat`
 - `start-overlay.ps1`
 - `README.md`
+- `OBS-PLUGIN.md`
 - `CHANGELOG.md`
 - `LICENSE`
 - `LICENSE-OBS-PLUGIN`
