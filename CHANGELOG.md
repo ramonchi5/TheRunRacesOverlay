@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.1.3 - 2026-07-13
+
+- Matched the `LEADER` label size to race deltas and current times.
+- Added adjustable supersampled native rendering, defaulting to `200%`, while preserving existing source dimensions and scene transforms.
+- Switched transparent text textures to a premultiplied-alpha path so OBS downscaling does not pull bright color from transparent pixels.
+- Extended gradient bounds beyond each glyph to remove the bright lower-edge artifact on titles and status labels.
+- Documented the unavoidable relationship between transformed canvas size and deep-zoom pixel visibility.
+- Added a `release/TheRunRacesOverlay-v3.1.3-OBS-Plugin-Windows-x64.zip` package without modifying previous releases.
+
 ## 3.0.3 - 2026-07-12
 
 - Added a native Windows x64 OBS source that renders the leaderboard directly with GDI+ instead of a Browser Source/CEF capture.

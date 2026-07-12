@@ -6,13 +6,13 @@ The local backend reads a public TheRun race URL. OBS can display the resulting 
 
 ## Status
 
-Version `3.0.3` is the native OBS plugin line and is ready for live-race testing.
+Version `3.1.3` is the native OBS plugin line and is ready for live-race testing.
 
-The `Fancy` branch contains v3 releases. Version `3.0.3` pairs with Browser Source version `2.0.3` on `main`; the released v2.0.2 package remains unchanged.
+The `Fancy` branch contains v3 releases. Version `3.1.3` is a rendering-only update built on the race behavior shared with Browser Source version `2.0.3` on `main`.
 
 ## Features
 
-- Native Windows OBS source with direct GDI+ rendering and in-OBS appearance controls.
+- Native Windows OBS source with supersampled GDI+ rendering and in-OBS appearance controls.
 - Browser Source fallback with no OBS plugin installation required.
 - Control page for pasting each new TheRun race URL without changing the OBS source.
 - Runner names, ELO rating changes, current times, split progress, and race deltas.
@@ -86,9 +86,9 @@ The local backend is separate from the installed plugin. Run `start-overlay.bat`
 
 Do not install only the DLL. OBS also needs the plugin's `data/locale` files, so either use the installer or copy the entire `therun-races-overlay/` folder. The ProgramData location works independently of the normal OBS installation directory. Portable OBS installations must instead place the folder in their own configured plugin directory.
 
-The source properties provide controls for output width, row height and gaps, title visibility and size, font family and scale, background opacity, gradient amount, shadow offset/blur/opacity, optional outline size, and polling interval. Gradient amount ranges from `0` (solid semantic colors) to `100` (the full white/color/dark treatment). The outline defaults to `0`; ELO ratings use solid colors instead of gradients.
+The source properties provide controls for output width, row height and gaps, title visibility and size, font family and scale, render quality, background opacity, gradient amount, shadow offset/blur/opacity, optional outline size, and polling interval. Render quality defaults to `200%` supersampling and can be reduced for very large leaderboards. Gradient amount ranges from `0` (solid semantic colors) to `100` (the full white/color/dark treatment). The outline defaults to `0`; ELO ratings use solid colors instead of gradients.
 
-For the sharpest result, set **Output width** close to the source's final width on the OBS canvas. This avoids rendering a large texture and then heavily reducing it.
+The supersampled texture improves diagonal and curved edges while OBS scales the source. The final stream still contains only the pixels available at the source's transformed canvas size, so very deep zooming will reveal those pixels. For the sharpest final result, avoid shrinking the source far below its configured **Output width**, and use OBS's Lanczos scale filter when substantial downscaling is necessary.
 
 Implementation, build, and installation details are documented in [`OBS-PLUGIN.md`](OBS-PLUGIN.md).
 
@@ -97,7 +97,7 @@ Implementation, build, and installation details are documented in [`OBS-PLUGIN.m
 The v3 GitHub release asset is:
 
 ```text
-release/TheRunRacesOverlay-v3.0.3-OBS-Plugin-Windows-x64.zip
+release/TheRunRacesOverlay-v3.1.3-OBS-Plugin-Windows-x64.zip
 ```
 
 The zip contains:

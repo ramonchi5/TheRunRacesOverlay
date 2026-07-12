@@ -57,6 +57,7 @@ constexpr const char *SETTING_SHOW_TITLE = "show_title";
 constexpr const char *SETTING_TITLE_SIZE = "title_font_size";
 constexpr const char *SETTING_FONT_FACE = "font_face";
 constexpr const char *SETTING_FONT_SCALE = "font_scale";
+constexpr const char *SETTING_RENDER_SCALE = "render_scale";
 constexpr const char *SETTING_BACKGROUND_OPACITY = "background_opacity";
 constexpr const char *SETTING_POSITION_OPACITY = "position_opacity";
 constexpr const char *SETTING_GRADIENT_STRENGTH = "gradient_strength";
@@ -232,7 +233,7 @@ std::string http_get_json(const std::string &url)
 	if (path.empty())
 		path = L"/";
 
-	WinHttpHandle session(WinHttpOpen(L"TheRunRacesOverlay-OBS/3.0.3",
+	WinHttpHandle session(WinHttpOpen(L"TheRunRacesOverlay-OBS/3.1.3",
 					  WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME,
 					  WINHTTP_NO_PROXY_BYPASS, 0));
 	if (!session)
@@ -295,6 +296,7 @@ struct SourceSettings {
 	uint32_t row_gap = DEFAULT_ROW_GAP;
 	uint32_t title_size = 34;
 	uint32_t font_scale = 100;
+	uint32_t render_scale = 200;
 	uint32_t background_opacity = 70;
 	uint32_t position_opacity = 50;
 	uint32_t gradient_strength = 100;
@@ -451,6 +453,8 @@ RaceData parse_race_data(const std::string &json)
 struct RenderFrame {
 	uint32_t width = 0;
 	uint32_t height = 0;
+	uint32_t texture_width = 0;
+	uint32_t texture_height = 0;
 	uint32_t stride = 0;
 	std::vector<uint8_t> pixels;
 };
@@ -544,8 +548,9 @@ public:
 			const float edge_mix = clamp_value(amount / 0.12f, 0.0f, 1.0f);
 			const Color top_edge = mix_color(semantic_color, COLOR_WHITE, edge_mix);
 			const Color bottom_edge = mix_color(semantic_color, COLOR_DARK, edge_mix);
-			const PointF top(bounds.X, bounds.Y);
-			const PointF bottom(bounds.X, bounds.GetBottom());
+			const float gradient_padding = std::max(1.0f, size * 0.035f);
+			const PointF top(bounds.X, bounds.Y - gradient_padding);
+			const PointF bottom(bounds.X, bounds.GetBottom() + gradient_padding);
 			LinearGradientBrush brush(top, bottom, top_edge, bottom_edge);
 			Color colors[] = {
 				top_edge,
@@ -736,8 +741,10 @@ void draw_live_dot(Graphics &graphics, float center_x, float center_y, float rad
 		const float edge_mix = clamp_value(amount / 0.12f, 0.0f, 1.0f);
 		const Color top_edge = mix_color(live_red, COLOR_WHITE, edge_mix);
 		const Color bottom_edge = mix_color(live_red, COLOR_DARK, edge_mix);
-		LinearGradientBrush brush(PointF(center_x, center_y - radius),
-					  PointF(center_x, center_y + radius), top_edge, bottom_edge);
+		const float gradient_padding = std::max(0.75f, radius * 0.12f);
+		LinearGradientBrush brush(PointF(center_x, center_y - radius - gradient_padding),
+					  PointF(center_x, center_y + radius + gradient_padding), top_edge,
+					  bottom_edge);
 		Color colors[] = {
 			top_edge,
 			mix_color(top_edge, live_red, 0.55f),
@@ -765,23 +772,40 @@ void draw_live_dot(Graphics &graphics, float center_x, float center_y, float rad
 	}
 }
 
-RenderFrame copy_bitmap(Bitmap &bitmap, uint32_t width, uint32_t height)
+float render_scale_for(const SourceSettings &settings, uint32_t width, uint32_t height)
+{
+	constexpr float MAX_SCALE = 3.0f;
+	constexpr float MAX_TEXTURE_DIMENSION = 8192.0f;
+	constexpr double MAX_TEXTURE_PIXELS = 32.0 * 1024.0 * 1024.0;
+	const float requested = clamp_value(static_cast<float>(settings.render_scale) / 100.0f,
+					    1.0f, MAX_SCALE);
+	const float dimension_limit = std::min(MAX_TEXTURE_DIMENSION / static_cast<float>(width),
+					       MAX_TEXTURE_DIMENSION / static_cast<float>(height));
+	const float pixel_limit = static_cast<float>(std::sqrt(
+		MAX_TEXTURE_PIXELS / (static_cast<double>(width) * static_cast<double>(height))));
+	return std::max(1.0f, std::min({requested, dimension_limit, pixel_limit}));
+}
+
+RenderFrame copy_bitmap(Bitmap &bitmap, uint32_t width, uint32_t height, uint32_t texture_width,
+			uint32_t texture_height)
 {
 	RenderFrame frame;
 	frame.width = width;
 	frame.height = height;
-	frame.stride = width * 4;
-	frame.pixels.resize(static_cast<size_t>(frame.stride) * height);
+	frame.texture_width = texture_width;
+	frame.texture_height = texture_height;
+	frame.stride = texture_width * 4;
+	frame.pixels.resize(static_cast<size_t>(frame.stride) * texture_height);
 
 	BitmapData data{};
-	Rect rectangle(0, 0, static_cast<INT>(width), static_cast<INT>(height));
-	if (bitmap.LockBits(&rectangle, ImageLockModeRead, PixelFormat32bppARGB, &data) != Ok)
+	Rect rectangle(0, 0, static_cast<INT>(texture_width), static_cast<INT>(texture_height));
+	if (bitmap.LockBits(&rectangle, ImageLockModeRead, PixelFormat32bppPARGB, &data) != Ok)
 		throw std::runtime_error("GDI+ could not read the rendered leaderboard");
 
 	const auto *scan = static_cast<const uint8_t *>(data.Scan0);
 	const INT source_stride = data.Stride;
-	for (uint32_t row = 0; row < height; ++row) {
-		const uint32_t source_row = source_stride < 0 ? height - row - 1 : row;
+	for (uint32_t row = 0; row < texture_height; ++row) {
+		const uint32_t source_row = source_stride < 0 ? texture_height - row - 1 : row;
 		const auto *source = scan + static_cast<ptrdiff_t>(source_row) * std::abs(source_stride);
 		auto *destination = frame.pixels.data() + static_cast<size_t>(row) * frame.stride;
 		std::memcpy(destination, source, frame.stride);
@@ -795,12 +819,17 @@ RenderFrame render_message(const SourceSettings &settings, const std::string &me
 {
 	const uint32_t width = settings.width;
 	const uint32_t height = 180;
-	Bitmap bitmap(static_cast<INT>(width), static_cast<INT>(height), PixelFormat32bppARGB);
+	const float render_scale = render_scale_for(settings, width, height);
+	const uint32_t texture_width = static_cast<uint32_t>(std::ceil(width * render_scale));
+	const uint32_t texture_height = static_cast<uint32_t>(std::ceil(height * render_scale));
+	Bitmap bitmap(static_cast<INT>(texture_width), static_cast<INT>(texture_height),
+		      PixelFormat32bppPARGB);
 	Graphics graphics(&bitmap);
 	graphics.SetSmoothingMode(SmoothingModeAntiAlias);
-	graphics.SetCompositingQuality(CompositingQualityGammaCorrected);
+	graphics.SetCompositingQuality(CompositingQualityHighQuality);
 	graphics.SetPixelOffsetMode(PixelOffsetModeHighQuality);
 	graphics.Clear(Color(0, 0, 0, 0));
+	graphics.ScaleTransform(render_scale, render_scale);
 
 	SolidBrush background(Color(178, 7, 9, 11));
 	graphics.FillRectangle(&background, 0.0f, 20.0f, static_cast<float>(width), 130.0f);
@@ -808,7 +837,7 @@ RenderFrame render_message(const SourceSettings &settings, const std::string &me
 	const float text_size = 30.0f * static_cast<float>(settings.font_scale) / 100.0f;
 	painter.draw_centered(utf8_to_wide(message), static_cast<float>(width) * 0.5f, 65.0f, text_size,
 			      FontStyleBold, COLOR_WHITE, true);
-	return copy_bitmap(bitmap, width, height);
+	return copy_bitmap(bitmap, width, height, texture_width, texture_height);
 }
 
 RenderFrame render_race(const RaceData &race, const SourceSettings &settings,
@@ -838,14 +867,18 @@ RenderFrame render_race(const RaceData &race, const SourceSettings &settings,
 				  : static_cast<float>(race.runners.size() * settings.row_height +
 						 (race.runners.size() - 1) * settings.row_gap);
 	const uint32_t output_height = static_cast<uint32_t>(std::ceil(title_height + rows_height));
-	Bitmap bitmap(static_cast<INT>(settings.width), static_cast<INT>(output_height),
-		      PixelFormat32bppARGB);
+	const float render_scale = render_scale_for(settings, settings.width, output_height);
+	const uint32_t texture_width = static_cast<uint32_t>(std::ceil(settings.width * render_scale));
+	const uint32_t texture_height = static_cast<uint32_t>(std::ceil(output_height * render_scale));
+	Bitmap bitmap(static_cast<INT>(texture_width), static_cast<INT>(texture_height),
+		      PixelFormat32bppPARGB);
 	Graphics graphics(&bitmap);
 	graphics.SetSmoothingMode(SmoothingModeAntiAlias);
-	graphics.SetCompositingQuality(CompositingQualityGammaCorrected);
+	graphics.SetCompositingQuality(CompositingQualityHighQuality);
 	graphics.SetPixelOffsetMode(PixelOffsetModeHighQuality);
 	graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
 	graphics.Clear(Color(0, 0, 0, 0));
+	graphics.ScaleTransform(render_scale, render_scale);
 	TextPainter painter(graphics, settings);
 
 	float cursor_y = 0.0f;
@@ -880,7 +913,7 @@ RenderFrame render_race(const RaceData &race, const SourceSettings &settings,
 				       static_cast<float>(settings.row_height));
 		painter.draw_centered(L"WAITING FOR RUNNERS", width * 0.5f, cursor_y + 35.0f,
 				      30.0f * scale, FontStyleBold, COLOR_GRAY, true);
-		return copy_bitmap(bitmap, settings.width, output_height);
+		return copy_bitmap(bitmap, settings.width, output_height, texture_width, texture_height);
 	}
 
 	const float outer_padding = std::max(10.0f, width * 0.012f);
@@ -1028,7 +1061,6 @@ RenderFrame render_race(const RaceData &race, const SourceSettings &settings,
 		} else if (runner.comparison_baseline) {
 			delta_label = L"LEADER";
 			delta_color = COLOR_GREEN;
-			delta_size = 24.0f * scale;
 		} else {
 			delta_label = L"-";
 		}
@@ -1052,7 +1084,7 @@ RenderFrame render_race(const RaceData &race, const SourceSettings &settings,
 			     delta_color, true);
 	}
 
-	return copy_bitmap(bitmap, settings.width, output_height);
+	return copy_bitmap(bitmap, settings.width, output_height, texture_width, texture_height);
 }
 
 SourceSettings read_settings(obs_data_t *settings)
@@ -1077,6 +1109,8 @@ SourceSettings read_settings(obs_data_t *settings)
 		obs_data_get_int(settings, SETTING_TITLE_SIZE), 12, 160));
 	result.font_scale = static_cast<uint32_t>(clamp_value<int64_t>(
 		obs_data_get_int(settings, SETTING_FONT_SCALE), 50, 200));
+	result.render_scale = static_cast<uint32_t>(clamp_value<int64_t>(
+		obs_data_get_int(settings, SETTING_RENDER_SCALE), 100, 300));
 	result.background_opacity = static_cast<uint32_t>(clamp_value<int64_t>(
 		obs_data_get_int(settings, SETTING_BACKGROUND_OPACITY), 0, 100));
 	result.position_opacity = static_cast<uint32_t>(clamp_value<int64_t>(
@@ -1157,21 +1191,28 @@ public:
 		}
 
 		if (!frame.pixels.empty()) {
-			if (!texture_ || texture_width_ != frame.width || texture_height_ != frame.height) {
+			if (!texture_ || texture_width_ != frame.texture_width ||
+			    texture_height_ != frame.texture_height) {
 				gs_texture_destroy(texture_);
 				const uint8_t *levels[] = {frame.pixels.data()};
-				texture_ = gs_texture_create(frame.width, frame.height, GS_BGRA, 1, levels,
-							     GS_DYNAMIC);
-				texture_width_ = frame.width;
-				texture_height_ = frame.height;
+				texture_ = gs_texture_create(frame.texture_width, frame.texture_height, GS_BGRA,
+							     1, levels, GS_DYNAMIC);
+				texture_width_ = frame.texture_width;
+				texture_height_ = frame.texture_height;
 			} else {
 				gs_texture_set_image(texture_, frame.pixels.data(), frame.stride, false);
 			}
 			uploaded_generation_ = generation;
 		}
 
-		if (texture_)
-			obs_source_draw(texture_, 0, 0, 0, 0, false);
+		if (texture_) {
+			gs_effect_t *effect = obs_get_base_effect(OBS_EFFECT_PREMULTIPLIED_ALPHA);
+			gs_eparam_t *image = gs_effect_get_param_by_name(effect, "image");
+			gs_effect_set_texture(image, texture_);
+			while (gs_effect_loop(effect, "Draw"))
+				obs_source_draw(texture_, 0, 0, output_width_.load(), output_height_.load(),
+						false);
+		}
 	}
 
 private:
@@ -1297,6 +1338,7 @@ void source_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, SETTING_TITLE_SIZE, 34);
 	obs_data_set_default_string(settings, SETTING_FONT_FACE, "Segoe UI");
 	obs_data_set_default_int(settings, SETTING_FONT_SCALE, 100);
+	obs_data_set_default_int(settings, SETTING_RENDER_SCALE, 200);
 	obs_data_set_default_int(settings, SETTING_BACKGROUND_OPACITY, 70);
 	obs_data_set_default_int(settings, SETTING_POSITION_OPACITY, 50);
 	obs_data_set_default_int(settings, SETTING_GRADIENT_STRENGTH, 100);
@@ -1339,6 +1381,8 @@ obs_properties_t *source_properties(void *data)
 	obs_properties_add_text(layout, SETTING_FONT_FACE, obs_module_text("FontFace"), OBS_TEXT_DEFAULT);
 	obs_properties_add_int_slider(layout, SETTING_FONT_SCALE, obs_module_text("FontScale"), 50, 200,
 				      1);
+	obs_properties_add_int_slider(layout, SETTING_RENDER_SCALE, obs_module_text("RenderScale"), 100,
+				      300, 25);
 	obs_properties_add_group(properties, "layout_group", obs_module_text("LayoutGroup"), OBS_GROUP_NORMAL,
 				 layout);
 
@@ -1407,7 +1451,7 @@ void register_therun_race_source()
 	static obs_source_info info{};
 	info.id = SOURCE_ID;
 	info.type = OBS_SOURCE_TYPE_INPUT;
-	info.output_flags = OBS_SOURCE_VIDEO;
+	info.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW;
 	info.get_name = source_name;
 	info.create = source_create;
 	info.destroy = source_destroy;

@@ -1,6 +1,6 @@
 # Native OBS Plugin
 
-Version 3.0.3 is a Windows x64 OBS module built against the official OBS Plugin Template. It replaces the Browser Source/CEF rendering layer while continuing to use the existing local Node.js backend for all TheRun parsing and race logic.
+Version 3.1.3 is a Windows x64 OBS module built against the official OBS Plugin Template. It replaces the Browser Source/CEF rendering layer while continuing to use the existing local Node.js backend for all TheRun parsing and race logic.
 
 ## Architecture
 
@@ -13,8 +13,8 @@ The source lifecycle is implemented with `obs_source_info`:
 - `create` owns settings, worker thread, pending frame, and GPU texture.
 - `update` copies source-property values and wakes the worker.
 - The worker polls JSON without blocking OBS's render thread.
-- GDI+ rasterizes a transparent BGRA frame only when data or settings change.
-- `video_render` uploads the newest frame and draws one OBS texture.
+- GDI+ rasterizes a supersampled premultiplied-BGRA frame when race data or settings change.
+- `video_render` uploads the newest frame and draws one texture at the source's stable logical size.
 - `destroy` joins the worker and releases the texture inside the OBS graphics context.
 
 Temporary backend failures retain the last successful texture. The plugin never places a large connection error over an established leaderboard.
@@ -22,10 +22,12 @@ Temporary backend failures retain the last successful texture. The plugin never 
 ## Text Rendering
 
 - Bold labels use a smooth distance-controlled vertical gradient measured against each glyph's exact bounds.
+- Gradient bounds extend beyond the glyph edge so endpoint colors cannot wrap onto the bottom row of antialiased pixels.
 - Gradient amount `0` uses solid semantic colors; higher values extend the light/dark transitions inward while preserving the semantic color at the center.
 - ELO ratings and rating changes use solid colors for small-text clarity.
 - Shadows are drawn as a separate multi-sample layer before the glyph fill.
 - Outlines are optional and disabled by default.
+- Render quality defaults to `200%`; premultiplied-alpha sampling prevents bright transparent-edge contamination during OBS scaling.
 - Equal outer gutters, row gaps, and all areas outside runner bands remain transparent.
 
 ## Build
