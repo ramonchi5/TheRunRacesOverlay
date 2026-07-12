@@ -62,6 +62,11 @@ body {
   );
 }
 
+[data-fancy="off"] .overlay .fancyText {
+  background-image: none;
+  -webkit-text-fill-color: currentColor;
+}
+
 .overlayPanel {
   background:
     linear-gradient(180deg, rgba(18, 24, 22, 0.94), rgba(10, 13, 12, 0.9)),
@@ -290,6 +295,10 @@ body {
     var(--fancy-shadow-offset) var(--fancy-shadow-near) 0 rgba(0, 0, 0, 0.91),
     var(--fancy-shadow-offset) var(--fancy-shadow-far) 0 rgba(0, 0, 0, 0.91),
     var(--fancy-shadow-offset) var(--fancy-shadow-offset) 0 #000000;
+}
+
+[data-fancy="off"] .streamingIndicator {
+  background: #ff4545;
 }
 
 .currentTime {

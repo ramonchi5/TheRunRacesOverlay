@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.3 - 2026-07-12
+
+- Added the `Fancy=on|off` URL option, defaulting to `on`, so Browser Sources can switch between gradient and solid text colors.
+- Made the control page expose `Fancy=on` in its generated OBS URL and documented the default near the top of the README.
+- Added a `release/TheRunRacesOverlay-v2.0.3.zip` package without modifying previous release archives.
+
 ## 2.0.2 - 2026-07-11
 
 - Added an always-on vertical three-color gradient to every overlay text element, preserving each element's existing semantic color in the middle.

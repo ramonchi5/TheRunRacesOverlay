@@ -6,11 +6,23 @@ The app runs locally, reads a public TheRun race URL, and renders a small timing
 
 ## Status
 
-Version `2.0.2` is ready for live-race testing.
+Version `2.0.3` is ready for live-race testing.
+
+## Fancy Text
+
+The generated OBS URL includes the default text treatment explicitly:
+
+```text
+http://127.0.0.1:5179/overlay?Fancy=on
+```
+
+Use `Fancy=off` for solid semantic text colors. It disables the vertical gradient while retaining the thin outline and shadow. Omitting `Fancy=` behaves like `Fancy=on`.
+
+For more appearance controls, use the native v3 edition available on the repository's `Fancy` branch.
 
 ## Features
 
-- Local OBS Browser Source overlay; no OBS plugin install required.
+- Local OBS Browser Source overlay with no native installation required.
 - Control page for pasting each new TheRun race URL without changing the OBS source.
 - Runner names, ELO rating changes, current times, split progress, and race deltas.
 - High-resolution default rendering with `zoom=3` for sharper OBS scaling.
@@ -24,7 +36,7 @@ Version `2.0.2` is ready for live-race testing.
 - Control-page diagnostics for timing method, split-plan matching, parent-split progress, and delta comparability.
 - Compact parent-split progress, split-completion highlights, and live-stream dots on the overlay.
 - Last successful race data remains on screen during temporary TheRun connection failures.
-- Static three-color gradients, subtle outlines, and soft shadows across all overlay text and live indicators.
+- Optional three-color gradients, subtle outlines, and soft shadows across overlay text and live indicators.
 
 ## Requirements
 
@@ -59,7 +71,7 @@ http://127.0.0.1:5179
 The GitHub release asset is:
 
 ```text
-release/TheRunRacesOverlay-v2.0.2.zip
+release/TheRunRacesOverlay-v2.0.3.zip
 ```
 
 The zip contains:
@@ -100,7 +112,7 @@ The control page also contains a diagnostics table. It reports the data currentl
 Add an OBS Browser Source:
 
 ```text
-URL:    http://127.0.0.1:5179/overlay
+URL:    http://127.0.0.1:5179/overlay?Fancy=on
 Width:  1100
 Height: 900
 ```
@@ -110,6 +122,8 @@ Use more height for larger races. After setting the Browser Source size, resize 
 ## URL Options
 
 ```text
+?Fancy=on                         use gradient text (default)
+?Fancy=off                        use solid text colors
 ?race=16c4                         pin a specific race id
 ?race=https://therun.gg/races/16c4  pin a specific race URL
 ?poll=1000                         refresh every 1 second
@@ -126,6 +140,7 @@ Use more height for larger races. After setting the Browser Source size, resize 
 Defaults:
 
 ```text
+Fancy=on
 poll=1000
 zoom=3
 width=290
@@ -179,7 +194,7 @@ After anyone finishes:
 - The race title is centered, uppercase, transparent behind the text, wraps onto extra lines instead of being abbreviated, and can be resized with `TitleFontSize`.
 - The row background padding is balanced on both sides, matching the space before the position tile with the space after the current time.
 - Participants that TheRun marks `visible: false` are excluded from the leaderboard.
-- Overlay text uses an always-on vertical `white -> existing color -> dark gray` gradient, a very thin semi-transparent black outline, and a soft offset black shadow. Row, title, and position backgrounds are not affected.
+- `Fancy=on` uses a vertical `white -> existing color -> dark gray` gradient; `Fancy=off` uses solid semantic colors. Both retain the thin outline and soft offset shadow. Row, title, and position backgrounds are not affected.
 
 ## Data And Privacy
 

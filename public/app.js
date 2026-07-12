@@ -4,6 +4,7 @@ const fixedRaceInput = params.get("race") || params.get("url") || "";
 const pollMs = clamp(Number(params.get("poll")) || 1000, 1000, 60000);
 const limit = clamp(Number(params.get("limit")) || 12, 1, 99);
 const showTitle = isEnabledParam(params.get("title"), true);
+const fancyEnabled = isEnabledParam(getFirstParam(["Fancy", "fancy"]), true);
 const theme = params.get("theme") === "light" ? "light" : "dark";
 const panelMode = params.get("panel") === "1" || params.get("background") === "panel";
 const defaultOverlayWidth = 290;
@@ -38,6 +39,7 @@ let diagnosticsError = "";
 let pendingSplitHighlights = new Set();
 
 document.documentElement.dataset.theme = theme;
+document.documentElement.dataset.fancy = fancyEnabled ? "on" : "off";
 document.documentElement.style.setProperty("--overlay-width", `${overlayWidth}px`);
 document.documentElement.style.setProperty("--render-zoom", renderZoom);
 document.documentElement.style.setProperty("--title-font-size", titleFontSize);
@@ -66,7 +68,7 @@ window.addEventListener("beforeunload", () => {
 function renderControl(message = "", isError = false) {
   const draftRaceInput = app.querySelector("#raceUrl")?.value;
   app.className = "setup";
-  const overlayUrl = `${window.location.origin}/overlay`;
+  const overlayUrl = `${window.location.origin}/overlay?Fancy=on`;
   const current = controlState?.currentRace;
 
   app.innerHTML = `
@@ -86,7 +88,7 @@ function renderControl(message = "", isError = false) {
       <div class="controlGrid">
         <div>
           <div class="controlLabel">OBS Browser Source</div>
-          <a class="controlValue" href="/overlay">${escapeHtml(overlayUrl)}</a>
+          <a class="controlValue" href="/overlay?Fancy=on">${escapeHtml(overlayUrl)}</a>
         </div>
         <div>
           <div class="controlLabel">Active Race</div>
