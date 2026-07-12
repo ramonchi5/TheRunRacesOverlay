@@ -59,6 +59,7 @@ constexpr const char *SETTING_FONT_FACE = "font_face";
 constexpr const char *SETTING_FONT_SCALE = "font_scale";
 constexpr const char *SETTING_BACKGROUND_OPACITY = "background_opacity";
 constexpr const char *SETTING_POSITION_OPACITY = "position_opacity";
+constexpr const char *SETTING_GRADIENT_STRENGTH = "gradient_strength";
 constexpr const char *SETTING_USE_GRADIENT = "use_gradient";
 constexpr const char *SETTING_SHADOW_OFFSET = "shadow_offset";
 constexpr const char *SETTING_SHADOW_BLUR = "shadow_blur";
@@ -231,7 +232,7 @@ std::string http_get_json(const std::string &url)
 	if (path.empty())
 		path = L"/";
 
-	WinHttpHandle session(WinHttpOpen(L"TheRunRacesOverlay-OBS/3.0.2",
+	WinHttpHandle session(WinHttpOpen(L"TheRunRacesOverlay-OBS/3.0.3",
 					  WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME,
 					  WINHTTP_NO_PROXY_BYPASS, 0));
 	if (!session)
@@ -296,13 +297,13 @@ struct SourceSettings {
 	uint32_t font_scale = 100;
 	uint32_t background_opacity = 70;
 	uint32_t position_opacity = 50;
+	uint32_t gradient_strength = 100;
 	uint32_t shadow_offset = 3;
 	uint32_t shadow_blur = 3;
 	uint32_t shadow_opacity = 90;
 	uint32_t poll_interval = 1000;
 	float outline_size = 0.0f;
 	bool show_title = true;
-	bool use_gradient = true;
 };
 
 struct LatestSplit {
@@ -476,10 +477,10 @@ public:
 			family_ = std::make_unique<FontFamily>(L"Segoe UI");
 	}
 
-	float measure_width(const std::wstring &text, float size, INT style) const
+	RectF measure_bounds(const std::wstring &text, float size, INT style) const
 	{
 		if (text.empty())
-			return 0.0f;
+			return {};
 
 		GraphicsPath path;
 		StringFormat format;
@@ -488,7 +489,12 @@ public:
 			       PointF(0.0f, 0.0f), &format);
 		RectF bounds;
 		path.GetBounds(&bounds);
-		return bounds.Width;
+		return bounds;
+	}
+
+	float measure_width(const std::wstring &text, float size, INT style) const
+	{
+		return measure_bounds(text, size, style).Width;
 	}
 
 	std::wstring fit_text(const std::wstring &text, float size, INT style, float maximum_width) const
@@ -531,19 +537,34 @@ public:
 			graphics_.DrawPath(&outline, &path);
 		}
 
-		if (gradient && settings_.use_gradient && bounds.Height > 0.5f) {
+		if (gradient && settings_.gradient_strength > 0 && bounds.Height > 0.5f) {
+			const float amount = static_cast<float>(settings_.gradient_strength) / 100.0f;
+			const float smooth_amount = amount * amount * (3.0f - 2.0f * amount);
+			const float transition_span = 0.08f + 0.40f * smooth_amount;
+			const float edge_mix = clamp_value(amount / 0.12f, 0.0f, 1.0f);
+			const Color top_edge = mix_color(semantic_color, COLOR_WHITE, edge_mix);
+			const Color bottom_edge = mix_color(semantic_color, COLOR_DARK, edge_mix);
 			const PointF top(bounds.X, bounds.Y);
 			const PointF bottom(bounds.X, bounds.GetBottom());
-			LinearGradientBrush brush(top, bottom, COLOR_WHITE, COLOR_DARK);
+			LinearGradientBrush brush(top, bottom, top_edge, bottom_edge);
 			Color colors[] = {
-				COLOR_WHITE,
-				mix_color(COLOR_WHITE, semantic_color, 0.35f),
+				top_edge,
+				mix_color(top_edge, semantic_color, 0.55f),
 				semantic_color,
-				mix_color(semantic_color, COLOR_DARK, 0.45f),
-				COLOR_DARK,
+				semantic_color,
+				mix_color(semantic_color, bottom_edge, 0.45f),
+				bottom_edge,
 			};
-			REAL positions[] = {0.0f, 0.30f, 0.62f, 0.84f, 1.0f};
-			brush.SetInterpolationColors(colors, positions, 5);
+			REAL positions[] = {
+				0.0f,
+				transition_span * 0.45f,
+				transition_span,
+				1.0f - transition_span,
+				1.0f - transition_span * 0.45f,
+				1.0f,
+			};
+			brush.SetWrapMode(WrapModeClamp);
+			brush.SetInterpolationColors(colors, positions, 6);
 			graphics_.FillPath(&brush, &path);
 		} else {
 			SolidBrush brush(semantic_color);
@@ -556,15 +577,24 @@ public:
 	void draw_centered(const std::wstring &text, float center_x, float y, float size, INT style,
 			   const Color &color, bool gradient)
 	{
-		const float width = measure_width(text, size, style);
-		draw(text, center_x - width * 0.5f, y, size, style, color, gradient);
+		const RectF bounds = measure_bounds(text, size, style);
+		draw(text, center_x - bounds.X - bounds.Width * 0.5f, y, size, style, color, gradient);
+	}
+
+	void draw_centered_in(const std::wstring &text, const RectF &area, float size, INT style,
+			      const Color &color, bool gradient)
+	{
+		const RectF bounds = measure_bounds(text, size, style);
+		const float x = area.X + (area.Width - bounds.Width) * 0.5f - bounds.X;
+		const float y = area.Y + (area.Height - bounds.Height) * 0.5f - bounds.Y;
+		draw(text, x, y, size, style, color, gradient);
 	}
 
 	void draw_right(const std::wstring &text, float right, float y, float size, INT style,
 			const Color &color, bool gradient)
 	{
-		const float width = measure_width(text, size, style);
-		draw(text, right - width, y, size, style, color, gradient);
+		const RectF bounds = measure_bounds(text, size, style);
+		draw(text, right - bounds.X - bounds.Width, y, size, style, color, gradient);
 	}
 
 private:
@@ -698,12 +728,41 @@ void draw_live_dot(Graphics &graphics, float center_x, float center_y, float rad
 	graphics.FillEllipse(&core_shadow, center_x - radius + offset, center_y - radius + offset,
 			     radius * 2.0f, radius * 2.0f);
 
-	LinearGradientBrush brush(PointF(center_x, center_y - radius), PointF(center_x, center_y + radius),
-				  COLOR_WHITE, COLOR_DARK);
-	Color colors[] = {COLOR_WHITE, Color(255, 255, 69, 69), COLOR_DARK};
-	REAL positions[] = {0.0f, 0.55f, 1.0f};
-	brush.SetInterpolationColors(colors, positions, 3);
-	graphics.FillEllipse(&brush, center_x - radius, center_y - radius, radius * 2.0f, radius * 2.0f);
+	const Color live_red(255, 255, 69, 69);
+	if (settings.gradient_strength > 0) {
+		const float amount = static_cast<float>(settings.gradient_strength) / 100.0f;
+		const float smooth_amount = amount * amount * (3.0f - 2.0f * amount);
+		const float transition_span = 0.08f + 0.40f * smooth_amount;
+		const float edge_mix = clamp_value(amount / 0.12f, 0.0f, 1.0f);
+		const Color top_edge = mix_color(live_red, COLOR_WHITE, edge_mix);
+		const Color bottom_edge = mix_color(live_red, COLOR_DARK, edge_mix);
+		LinearGradientBrush brush(PointF(center_x, center_y - radius),
+					  PointF(center_x, center_y + radius), top_edge, bottom_edge);
+		Color colors[] = {
+			top_edge,
+			mix_color(top_edge, live_red, 0.55f),
+			live_red,
+			live_red,
+			mix_color(live_red, bottom_edge, 0.45f),
+			bottom_edge,
+		};
+		REAL positions[] = {
+			0.0f,
+			transition_span * 0.45f,
+			transition_span,
+			1.0f - transition_span,
+			1.0f - transition_span * 0.45f,
+			1.0f,
+		};
+		brush.SetWrapMode(WrapModeClamp);
+		brush.SetInterpolationColors(colors, positions, 6);
+		graphics.FillEllipse(&brush, center_x - radius, center_y - radius, radius * 2.0f,
+				     radius * 2.0f);
+	} else {
+		SolidBrush brush(live_red);
+		graphics.FillEllipse(&brush, center_x - radius, center_y - radius, radius * 2.0f,
+				     radius * 2.0f);
+	}
 }
 
 RenderFrame copy_bitmap(Bitmap &bitmap, uint32_t width, uint32_t height)
@@ -739,6 +798,7 @@ RenderFrame render_message(const SourceSettings &settings, const std::string &me
 	Bitmap bitmap(static_cast<INT>(width), static_cast<INT>(height), PixelFormat32bppARGB);
 	Graphics graphics(&bitmap);
 	graphics.SetSmoothingMode(SmoothingModeAntiAlias);
+	graphics.SetCompositingQuality(CompositingQualityGammaCorrected);
 	graphics.SetPixelOffsetMode(PixelOffsetModeHighQuality);
 	graphics.Clear(Color(0, 0, 0, 0));
 
@@ -782,7 +842,7 @@ RenderFrame render_race(const RaceData &race, const SourceSettings &settings,
 		      PixelFormat32bppARGB);
 	Graphics graphics(&bitmap);
 	graphics.SetSmoothingMode(SmoothingModeAntiAlias);
-	graphics.SetCompositingQuality(CompositingQualityHighQuality);
+	graphics.SetCompositingQuality(CompositingQualityGammaCorrected);
 	graphics.SetPixelOffsetMode(PixelOffsetModeHighQuality);
 	graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
 	graphics.Clear(Color(0, 0, 0, 0));
@@ -814,19 +874,23 @@ RenderFrame render_race(const RaceData &race, const SourceSettings &settings,
 	}
 
 	if (race.runners.empty()) {
+		const float outer_padding = std::max(10.0f, width * 0.012f);
 		SolidBrush background(Color(178, 7, 9, 11));
-		graphics.FillRectangle(&background, 0.0f, cursor_y, width,
+		graphics.FillRectangle(&background, outer_padding, cursor_y, width - outer_padding * 2.0f,
 				       static_cast<float>(settings.row_height));
 		painter.draw_centered(L"WAITING FOR RUNNERS", width * 0.5f, cursor_y + 35.0f,
 				      30.0f * scale, FontStyleBold, COLOR_GRAY, true);
 		return copy_bitmap(bitmap, settings.width, output_height);
 	}
 
-	const float place_width = std::max(82.0f, width * 0.11f);
-	const float horizontal_padding = std::max(14.0f, width * 0.018f);
-	const float info_x = place_width + horizontal_padding;
-	const float stats_left = width * 0.61f;
-	const float stats_right = width - horizontal_padding;
+	const float outer_padding = std::max(10.0f, width * 0.012f);
+	const float row_left = outer_padding;
+	const float row_width = width - outer_padding * 2.0f;
+	const float place_width = std::max(82.0f, row_width * 0.11f);
+	const float horizontal_padding = std::max(18.0f * scale, row_width * 0.018f);
+	const float info_x = row_left + place_width + horizontal_padding;
+	const float stats_left = row_left + row_width * 0.61f;
+	const float stats_right = row_left + row_width - horizontal_padding;
 	const BYTE row_alpha = static_cast<BYTE>(std::lround(255.0f * settings.background_opacity / 100.0f));
 	const BYTE place_alpha = static_cast<BYTE>(std::lround(255.0f * settings.position_opacity / 100.0f));
 
@@ -842,25 +906,25 @@ RenderFrame render_race(const RaceData &race, const SourceSettings &settings,
 		const float row_height = static_cast<float>(settings.row_height);
 
 		SolidBrush row_background(Color(row_alpha, 7, 9, 11));
-		graphics.FillRectangle(&row_background, 0.0f, row_top, width, row_height);
+		graphics.FillRectangle(&row_background, row_left, row_top, row_width, row_height);
 		SolidBrush place_background(Color(place_alpha, 72, 78, 74));
-		graphics.FillRectangle(&place_background, 0.0f, row_top, place_width, row_height);
+		graphics.FillRectangle(&place_background, row_left, row_top, place_width, row_height);
 		if (highlighted.contains(runner.username)) {
 			SolidBrush highlight(Color(42, 83, 220, 107));
-			graphics.FillRectangle(&highlight, place_width, row_top, width - place_width, row_height);
+			graphics.FillRectangle(&highlight, row_left + place_width, row_top,
+					       row_width - place_width, row_height);
 		}
 
 		const std::wstring place = utf8_to_wide(normalized_place(runner));
-		painter.draw_centered(place, place_width * 0.5f,
-				      row_top + (row_height - place_size) * 0.42f, place_size,
-				      FontStyleBold, COLOR_WHITE, true);
+		painter.draw_centered_in(place, RectF(row_left, row_top, place_width, row_height), place_size,
+					 FontStyleBold, COLOR_WHITE, true);
 
-		float name_x = info_x;
+		const float name_x = info_x;
 		const float name_y = row_top + row_height * 0.12f;
 		if (runner.streaming) {
-			const float radius = std::max(6.0f, 7.5f * scale);
-			draw_live_dot(graphics, name_x + radius, name_y + radius + 2.0f, radius, settings);
-			name_x += radius * 2.0f + 12.0f;
+			const float radius = std::max(4.5f, 5.5f * scale);
+			draw_live_dot(graphics, name_x - radius - 3.0f * scale,
+				      name_y + radius + 1.0f * scale, radius, settings);
 		}
 
 		const std::wstring rating = utf8_to_wide(runner.rating);
@@ -1017,6 +1081,12 @@ SourceSettings read_settings(obs_data_t *settings)
 		obs_data_get_int(settings, SETTING_BACKGROUND_OPACITY), 0, 100));
 	result.position_opacity = static_cast<uint32_t>(clamp_value<int64_t>(
 		obs_data_get_int(settings, SETTING_POSITION_OPACITY), 0, 100));
+	if (obs_data_has_user_value(settings, SETTING_GRADIENT_STRENGTH)) {
+		result.gradient_strength = static_cast<uint32_t>(clamp_value<int64_t>(
+			obs_data_get_int(settings, SETTING_GRADIENT_STRENGTH), 0, 100));
+	} else if (obs_data_has_user_value(settings, SETTING_USE_GRADIENT)) {
+		result.gradient_strength = obs_data_get_bool(settings, SETTING_USE_GRADIENT) ? 100 : 0;
+	}
 	result.shadow_offset = static_cast<uint32_t>(clamp_value<int64_t>(
 		obs_data_get_int(settings, SETTING_SHADOW_OFFSET), 0, 20));
 	result.shadow_blur = static_cast<uint32_t>(clamp_value<int64_t>(
@@ -1028,7 +1098,6 @@ SourceSettings read_settings(obs_data_t *settings)
 	result.outline_size = static_cast<float>(clamp_value(
 		obs_data_get_double(settings, SETTING_OUTLINE_SIZE), 0.0, 10.0));
 	result.show_title = obs_data_get_bool(settings, SETTING_SHOW_TITLE);
-	result.use_gradient = obs_data_get_bool(settings, SETTING_USE_GRADIENT);
 	return result;
 }
 
@@ -1230,7 +1299,7 @@ void source_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, SETTING_FONT_SCALE, 100);
 	obs_data_set_default_int(settings, SETTING_BACKGROUND_OPACITY, 70);
 	obs_data_set_default_int(settings, SETTING_POSITION_OPACITY, 50);
-	obs_data_set_default_bool(settings, SETTING_USE_GRADIENT, true);
+	obs_data_set_default_int(settings, SETTING_GRADIENT_STRENGTH, 100);
 	obs_data_set_default_int(settings, SETTING_SHADOW_OFFSET, 3);
 	obs_data_set_default_int(settings, SETTING_SHADOW_BLUR, 3);
 	obs_data_set_default_int(settings, SETTING_SHADOW_OPACITY, 90);
@@ -1278,7 +1347,8 @@ obs_properties_t *source_properties(void *data)
 				      obs_module_text("BackgroundOpacity"), 0, 100, 1);
 	obs_properties_add_int_slider(appearance, SETTING_POSITION_OPACITY,
 				      obs_module_text("PositionOpacity"), 0, 100, 1);
-	obs_properties_add_bool(appearance, SETTING_USE_GRADIENT, obs_module_text("UseGradient"));
+	obs_properties_add_int_slider(appearance, SETTING_GRADIENT_STRENGTH,
+				      obs_module_text("GradientStrength"), 0, 100, 1);
 	obs_properties_add_int_slider(appearance, SETTING_SHADOW_OFFSET, obs_module_text("ShadowOffset"), 0,
 				      20, 1);
 	obs_properties_add_int_slider(appearance, SETTING_SHADOW_BLUR, obs_module_text("ShadowBlur"), 0, 20,

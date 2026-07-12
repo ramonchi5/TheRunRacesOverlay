@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.0.2 - 2026-07-12
+## 3.0.3 - 2026-07-12
 
 - Added a native Windows x64 OBS source that renders the leaderboard directly with GDI+ instead of a Browser Source/CEF capture.
 - Added native source properties for race selection, output dimensions, typography, opacity, gradients, shadows, outlines, and polling.
@@ -8,8 +8,12 @@
 - Made the native outline optional and disabled by default, kept thin ELO text solid-colored, and moved depth into a multi-sample shadow drawn behind each glyph.
 - Added a release installer for OBS's recommended `C:\ProgramData\obs-studio\plugins` directory.
 - Added English and Spanish labels for the native OBS source properties.
+- Added equal transparent outer gutters and exact horizontal/vertical centering for position labels.
+- Kept every runner name on the same origin while moving a smaller LIVE indicator into the existing column gap.
+- Replaced the gradient toggle with a smooth `0` to `100` distance slider and clamped gradient edges to prevent white wraparound below glyphs.
+- Improved outline-edge blending with gamma-correct antialiased compositing.
 - Added a `Fancy` release line for native v3 builds while preserving `main` as the local-URL v2 line.
-- Added a `release/TheRunRacesOverlay-v3.0.2-OBS-Plugin-Windows-x64.zip` package without modifying previous release archives.
+- Added a `release/TheRunRacesOverlay-v3.0.3-OBS-Plugin-Windows-x64.zip` package without modifying released v2 archives.
 
 ## 2.0.2 - 2026-07-11
 

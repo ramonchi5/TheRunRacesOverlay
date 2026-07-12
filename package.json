@@ -1,6 +1,6 @@
 {
   "name": "therun-obs-overlay",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "private": true,
   "description": "Native OBS source and local race-data backend for therun.gg standings.",
   "license": "MIT",

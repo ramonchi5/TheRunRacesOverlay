@@ -6,9 +6,9 @@ The local backend reads a public TheRun race URL. OBS can display the resulting 
 
 ## Status
 
-Version `3.0.2` is the native OBS plugin line and is ready for live-race testing.
+Version `3.0.3` is the native OBS plugin line and is ready for live-race testing.
 
-The `Fancy` branch contains v3 releases. The `main` branch remains the v2 local-URL/Browser Source line; the released v2.0.2 package is unchanged.
+The `Fancy` branch contains v3 releases. Version `3.0.3` pairs with Browser Source version `2.0.3` on `main`; the released v2.0.2 package remains unchanged.
 
 ## Features
 
@@ -27,7 +27,7 @@ The `Fancy` branch contains v3 releases. The `main` branch remains the v2 local-
 - Control-page diagnostics for timing method, split-plan matching, parent-split progress, and delta comparability.
 - Compact parent-split progress, split-completion highlights, and live-stream dots on the overlay.
 - Last successful race data remains on screen during temporary TheRun connection failures.
-- Static three-color gradients, subtle outlines, and soft shadows across all overlay text and live indicators.
+- Adjustable semantic-color gradients, subtle outlines, and soft shadows across overlay text and live indicators.
 
 ## Requirements
 
@@ -68,7 +68,7 @@ Extract the v3 release anywhere on the PC and double-click:
 install-obs-plugin.bat
 ```
 
-This copies the native module to OBS's recommended Windows plugin directory:
+This copies the complete native module folder to OBS's recommended Windows plugin directory:
 
 ```text
 C:\ProgramData\obs-studio\plugins\therun-races-overlay
@@ -84,7 +84,9 @@ Paste a full TheRun race URL or race ID directly into the source properties. An 
 
 The local backend is separate from the installed plugin. Run `start-overlay.bat` each time you want to use the leaderboard; closing it or rebooting the PC stops the local server and does not configure an automatic startup task.
 
-The source properties provide controls for output width, row height and gaps, title visibility and size, font family and scale, background opacity, gradients, shadow offset/blur/opacity, optional outline size, and polling interval. The outline defaults to `0`; ELO ratings use solid colors instead of gradients.
+Do not install only the DLL. OBS also needs the plugin's `data/locale` files, so either use the installer or copy the entire `therun-races-overlay/` folder. The ProgramData location works independently of the normal OBS installation directory. Portable OBS installations must instead place the folder in their own configured plugin directory.
+
+The source properties provide controls for output width, row height and gaps, title visibility and size, font family and scale, background opacity, gradient amount, shadow offset/blur/opacity, optional outline size, and polling interval. Gradient amount ranges from `0` (solid semantic colors) to `100` (the full white/color/dark treatment). The outline defaults to `0`; ELO ratings use solid colors instead of gradients.
 
 For the sharpest result, set **Output width** close to the source's final width on the OBS canvas. This avoids rendering a large texture and then heavily reducing it.
 
@@ -95,7 +97,7 @@ Implementation, build, and installation details are documented in [`OBS-PLUGIN.m
 The v3 GitHub release asset is:
 
 ```text
-release/TheRunRacesOverlay-v3.0.2-OBS-Plugin-Windows-x64.zip
+release/TheRunRacesOverlay-v3.0.3-OBS-Plugin-Windows-x64.zip
 ```
 
 The zip contains:
