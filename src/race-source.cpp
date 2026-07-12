@@ -11,6 +11,7 @@ the Free Software Foundation; either version 2 of the License, or
 #include "race-source.hpp"
 
 #include <windows.h>
+#include <objidl.h>
 #include <gdiplus.h>
 #include <winhttp.h>
 

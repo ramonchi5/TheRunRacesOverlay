@@ -9,6 +9,7 @@ the Free Software Foundation; either version 2 of the License, or
 */
 
 #include <windows.h>
+#include <objidl.h>
 #include <gdiplus.h>
 
 #include <obs-module.h>
