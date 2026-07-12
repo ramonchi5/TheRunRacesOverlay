@@ -6,7 +6,7 @@ The local backend reads a public TheRun race URL. OBS can display the resulting 
 
 ## Status
 
-Version `3.0.2` is the native OBS plugin line and is ready for build validation and live-race testing.
+Version `3.0.2` is the native OBS plugin line and is ready for live-race testing.
 
 The `Fancy` branch contains v3 releases. The `main` branch remains the v2 local-URL/Browser Source line; the released v2.0.2 package is unchanged.
 
@@ -62,13 +62,27 @@ The native source deliberately reuses this backend so the tested split/subsplit,
 
 ## Native OBS Source
 
-Install the Windows x64 plugin package into OBS, restart OBS, then add this source:
+Extract the v3 release anywhere on the PC and double-click:
+
+```text
+install-obs-plugin.bat
+```
+
+This copies the native module to OBS's recommended Windows plugin directory:
+
+```text
+C:\ProgramData\obs-studio\plugins\therun-races-overlay
+```
+
+The plugin remains installed after reboot. Restart OBS after installing it, then add this source:
 
 ```text
 TheRun Race Leaderboard
 ```
 
 Paste a full TheRun race URL or race ID directly into the source properties. An empty race field follows the race selected at `http://127.0.0.1:5179/control`.
+
+The local backend is separate from the installed plugin. Run `start-overlay.bat` each time you want to use the leaderboard; closing it or rebooting the PC stops the local server and does not configure an automatic startup task.
 
 The source properties provide controls for output width, row height and gaps, title visibility and size, font family and scale, background opacity, gradients, shadow offset/blur/opacity, optional outline size, and polling interval. The outline defaults to `0`; ELO ratings use solid colors instead of gradients.
 
@@ -87,6 +101,7 @@ release/TheRunRacesOverlay-v3.0.2-OBS-Plugin-Windows-x64.zip
 The zip contains:
 
 - `therun-races-overlay/` (the native OBS plugin)
+- `install-obs-plugin.bat`
 - `public/`
 - `test/`
 - `server.js`
@@ -96,6 +111,7 @@ The zip contains:
 - `README.md`
 - `CHANGELOG.md`
 - `LICENSE`
+- `LICENSE-OBS-PLUGIN`
 - `NOTICE.md`
 
 The plugin folder, `server.js`, and `public/` are required for the native source: the plugin draws the leaderboard while the local backend supplies the normalized race data. The tests, start scripts, package metadata, README, changelog, licenses, and notices are included so the release is verifiable, easy to run, and carries its attribution/licensing context.

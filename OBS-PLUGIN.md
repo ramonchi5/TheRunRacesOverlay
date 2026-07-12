@@ -41,13 +41,13 @@ cmake --install build_x64 --prefix release/RelWithDebInfo --config RelWithDebInf
 
 ## Install
 
-Copy the generated `therun-races-overlay` folder into:
+The v3 release includes `install-obs-plugin.bat`. It copies the generated `therun-races-overlay` folder into OBS's recommended Windows plugin directory:
 
 ```text
-%APPDATA%\obs-studio\plugins\
+C:\ProgramData\obs-studio\plugins\
 ```
 
-Restart OBS and add **TheRun Race Leaderboard** from the Sources menu. Start the local backend with `start-overlay.bat`, then paste a race URL into the source properties.
+The plugin remains installed after reboot. Restart OBS and add **TheRun Race Leaderboard** from the Sources menu. Start the local backend with `start-overlay.bat` whenever you want to use the source, then paste a race URL into the source properties.
 
 ## Licensing
 

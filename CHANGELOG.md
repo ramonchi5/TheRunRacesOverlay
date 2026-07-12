@@ -6,6 +6,8 @@
 - Added native source properties for race selection, output dimensions, typography, opacity, gradients, shadows, outlines, and polling.
 - Reused the local Node.js backend so the native and browser editions share the same tested race ordering, parent-split, delta, and stale-data behavior.
 - Made the native outline optional and disabled by default, kept thin ELO text solid-colored, and moved depth into a multi-sample shadow drawn behind each glyph.
+- Added a release installer for OBS's recommended `C:\ProgramData\obs-studio\plugins` directory.
+- Added English and Spanish labels for the native OBS source properties.
 - Added a `Fancy` release line for native v3 builds while preserving `main` as the local-URL v2 line.
 
 ## 2.0.2 - 2026-07-11
