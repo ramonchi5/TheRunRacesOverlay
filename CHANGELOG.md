@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.2.3 - 2026-07-13
+
+- Bundled a Node.js runtime and the tested race backend inside the native plugin folder.
+- Added automatic hidden backend startup when the first native leaderboard is shown and shutdown when the last source is hidden.
+- Shared one managed backend process across multiple leaderboard sources and restarted it if it exits unexpectedly.
+- Paused network polling while a source is not shown in OBS.
+- Preserved custom backend URLs and the Browser Source/manual-script workflow as optional alternatives.
+- Added Node.js redistribution notices and a `release/TheRunRacesOverlay-v3.2.3-OBS-Plugin-Windows-x64.zip` package without modifying previous releases.
+
 ## 3.1.3 - 2026-07-13
 
 - Matched the `LEADER` label size to race deltas and current times.

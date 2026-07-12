@@ -47,7 +47,8 @@ function Build {
     Push-Location -Stack BuildTemp
     Ensure-Location $ProjectRoot
 
-    $CmakeArgs = @('--preset', "windows-ci-${Target}")
+    $NodeExecutable = (Get-Command node).Source
+    $CmakeArgs = @('--preset', "windows-ci-${Target}", "-DBUNDLED_NODE_EXECUTABLE=${NodeExecutable}")
     $CmakeBuildArgs = @('--build')
     $CmakeInstallArgs = @()
 

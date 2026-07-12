@@ -1,17 +1,19 @@
 # Native OBS Plugin
 
-Version 3.1.3 is a Windows x64 OBS module built against the official OBS Plugin Template. It replaces the Browser Source/CEF rendering layer while continuing to use the existing local Node.js backend for all TheRun parsing and race logic.
+Version 3.2.3 is a Windows x64 OBS module built against the official OBS Plugin Template. It replaces the Browser Source/CEF rendering layer and automatically manages a bundled copy of the existing Node.js backend for all TheRun parsing and race logic.
 
 ## Architecture
 
 ```text
-therun.gg -> server.js -> http://127.0.0.1:5179/api/race -> native OBS source
+therun.gg -> bundled server.js -> http://127.0.0.1:5179/api/race -> native OBS source
 ```
 
 The source lifecycle is implemented with `obs_source_info`:
 
 - `create` owns settings, worker thread, pending frame, and GPU texture.
 - `update` copies source-property values and wakes the worker.
+- `show` acquires the shared managed backend; `hide` releases it and pauses polling.
+- The first visible source launches one hidden bundled Node.js process, and the last hidden source stops it.
 - The worker polls JSON without blocking OBS's render thread.
 - GDI+ rasterizes a supersampled premultiplied-BGRA frame when race data or settings change.
 - `video_render` uploads the newest frame and draws one texture at the source's stable logical size.
@@ -34,7 +36,7 @@ Temporary backend failures retain the last successful texture. The plugin never 
 
 The checked-in build files come from the official OBS Plugin Template. The GitHub workflow builds with Visual Studio 2022 on `windows-2022` and uploads an installable artifact.
 
-For a local build, use Visual Studio 2022 or newer with the **Desktop development with C++** workload. Include the MSVC x64/x86 build tools, Windows 11 SDK, and CMake tools for Windows (CMake 3.30 or newer), then run:
+For a local build, use Visual Studio 2022 or newer with the **Desktop development with C++** workload. Include the MSVC x64/x86 build tools, Windows 11 SDK, CMake tools for Windows (CMake 3.30 or newer), and a Node.js executable to package, then run:
 
 ```powershell
 cmake --preset windows-x64
@@ -52,10 +54,10 @@ The v3 release includes `install-obs-plugin.bat`. It copies the complete generat
 C:\ProgramData\obs-studio\plugins\
 ```
 
-The plugin remains installed after reboot. Restart OBS and add **TheRun Race Leaderboard** from the Sources menu. Start the local backend with `start-overlay.bat` whenever you want to use the source, then paste a race URL into the source properties.
+The plugin remains installed after reboot. Restart OBS, add **TheRun Race Leaderboard** from the Sources menu, and paste a race URL into the source properties. The bundled backend starts automatically with no console window whenever the source is shown.
 
-The DLL cannot be installed by itself because OBS also loads locale data from the plugin folder. The ProgramData path is independent of a standard OBS installation path. For portable OBS, copy the complete folder into that installation's configured plugin directory instead.
+The DLL cannot be installed by itself because OBS also loads locale data, the race backend, and the bundled runtime from the plugin folder. The ProgramData path is independent of a standard OBS installation path. For portable OBS, copy the complete folder into that installation's configured plugin directory instead.
 
 ## Licensing
 
-The native plugin and its build scaffolding are GPL-2.0-or-later; see `LICENSE-OBS-PLUGIN`. The Node.js backend and Browser Source remain MIT-licensed under `LICENSE`.
+The native plugin and its build scaffolding are GPL-2.0-or-later; see `LICENSE-OBS-PLUGIN`. The Node.js backend and Browser Source remain MIT-licensed under `LICENSE`. The bundled Node.js runtime is distributed under the notices included at `data/runtime/LICENSE`.

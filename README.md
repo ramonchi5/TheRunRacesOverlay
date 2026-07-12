@@ -2,17 +2,18 @@
 
 Compact native OBS source for live races on [therun.gg](https://therun.gg), with the original Browser Source available as a fallback.
 
-The local backend reads a public TheRun race URL. OBS can display the resulting timing-tower leaderboard through the native Windows source or the original browser overlay.
+The backend reads a public TheRun race URL. OBS can display the resulting timing-tower leaderboard through the native Windows source or the original browser overlay.
 
 ## Status
 
-Version `3.1.3` is the native OBS plugin line and is ready for live-race testing.
+Version `3.2.3` is the self-contained native OBS plugin line and is ready for live-race testing.
 
-The `Fancy` branch contains v3 releases. Version `3.1.3` is a rendering-only update built on the race behavior shared with Browser Source version `2.0.3` on `main`.
+The `Fancy` branch contains v3 releases. Version `3.2.3` adds source-managed backend startup to the v3.1.3 renderer while retaining the race behavior shared with Browser Source version `2.0.3` on `main`.
 
 ## Features
 
 - Native Windows OBS source with supersampled GDI+ rendering and in-OBS appearance controls.
+- Bundled backend runtime that starts invisibly when a leaderboard is shown and stops after the last leaderboard is hidden.
 - Browser Source fallback with no OBS plugin installation required.
 - Control page for pasting each new TheRun race URL without changing the OBS source.
 - Runner names, ELO rating changes, current times, split progress, and race deltas.
@@ -31,34 +32,33 @@ The `Fancy` branch contains v3 releases. Version `3.1.3` is a rendering-only upd
 
 ## Requirements
 
-- Node.js 18 or newer.
 - OBS Studio 31 or newer on Windows x64 for the native source.
+- Node.js 18 or newer only when using the optional Browser Source fallback or manual backend scripts.
 - Any OBS Studio version with Browser Source support for the browser fallback.
 - A public race page from therun.gg.
 
 No therun.gg login is needed.
 
-## Start Backend
+## Managed Backend
 
-Double-click:
+The native v3.2.3 plugin includes its own backend runtime. No BAT file needs to be started. The DLL launches one hidden backend process when the first TheRun leaderboard becomes visible, shares it across every visible leaderboard source, and stops it when the final source is hidden or OBS exits.
+
+The default **Start bundled backend automatically** setting uses `http://127.0.0.1:5179`. Disable it only when supplying a separately managed backend URL.
+
+The control page is available while a native leaderboard source is visible:
+
+```text
+http://127.0.0.1:5179/control
+```
+
+The native source deliberately reuses the tested JavaScript backend so split/subsplit, ordering, delta, and stale-data behavior still have one implementation. Node.js is bundled inside the plugin; users do not need to install it for native v3 operation.
+
+For the optional Browser Source fallback, Node.js 18+ and the manual scripts remain available:
 
 ```text
 start-overlay.bat
+start-overlay.ps1
 ```
-
-Or run from PowerShell:
-
-```powershell
-.\start-overlay.ps1
-```
-
-The local server starts at:
-
-```text
-http://127.0.0.1:5179
-```
-
-The native source deliberately reuses this backend so the tested split/subsplit, ordering, delta, and stale-data behavior has one implementation. It replaces the visual layer, not the race logic.
 
 ## Native OBS Source
 
@@ -82,11 +82,11 @@ TheRun Race Leaderboard
 
 Paste a full TheRun race URL or race ID directly into the source properties. An empty race field follows the race selected at `http://127.0.0.1:5179/control`.
 
-The local backend is separate from the installed plugin. Run `start-overlay.bat` each time you want to use the leaderboard; closing it or rebooting the PC stops the local server and does not configure an automatic startup task.
+Nothing is configured to start with Windows. The managed backend exists only while OBS is running and at least one native leaderboard source is visible.
 
 Do not install only the DLL. OBS also needs the plugin's `data/locale` files, so either use the installer or copy the entire `therun-races-overlay/` folder. The ProgramData location works independently of the normal OBS installation directory. Portable OBS installations must instead place the folder in their own configured plugin directory.
 
-The source properties provide controls for output width, row height and gaps, title visibility and size, font family and scale, render quality, background opacity, gradient amount, shadow offset/blur/opacity, optional outline size, and polling interval. Render quality defaults to `200%` supersampling and can be reduced for very large leaderboards. Gradient amount ranges from `0` (solid semantic colors) to `100` (the full white/color/dark treatment). The outline defaults to `0`; ELO ratings use solid colors instead of gradients.
+The source properties provide controls for automatic backend management, a custom backend URL, output width, row height and gaps, title visibility and size, font family and scale, render quality, background opacity, gradient amount, shadow offset/blur/opacity, optional outline size, and polling interval. Render quality defaults to `200%` supersampling and can be reduced for very large leaderboards. Gradient amount ranges from `0` (solid semantic colors) to `100` (the full white/color/dark treatment). The outline defaults to `0`; ELO ratings use solid colors instead of gradients.
 
 The supersampled texture improves diagonal and curved edges while OBS scales the source. The final stream still contains only the pixels available at the source's transformed canvas size, so very deep zooming will reveal those pixels. For the sharpest final result, avoid shrinking the source far below its configured **Output width**, and use OBS's Lanczos scale filter when substantial downscaling is necessary.
 
@@ -97,12 +97,12 @@ Implementation, build, and installation details are documented in [`OBS-PLUGIN.m
 The v3 GitHub release asset is:
 
 ```text
-release/TheRunRacesOverlay-v3.1.3-OBS-Plugin-Windows-x64.zip
+release/TheRunRacesOverlay-v3.2.3-OBS-Plugin-Windows-x64.zip
 ```
 
 The zip contains:
 
-- `therun-races-overlay/` (the native OBS plugin)
+- `therun-races-overlay/` (the native OBS plugin, managed backend, Node.js runtime, and Node.js license)
 - `install-obs-plugin.bat`
 - `public/`
 - `test/`
@@ -117,7 +117,7 @@ The zip contains:
 - `LICENSE-OBS-PLUGIN`
 - `NOTICE.md`
 
-The plugin folder, `server.js`, and `public/` are required for the native source: the plugin draws the leaderboard while the local backend supplies the normalized race data. The tests, start scripts, package metadata, README, changelog, licenses, and notices are included so the release is verifiable, easy to run, and carries its attribution/licensing context.
+Only the complete `therun-races-overlay/` folder is required for native operation. The root `server.js`, `public/`, tests, and start scripts remain in the release for the optional Browser Source fallback and independent verification. Documentation and license notices cover both editions and the bundled Node.js runtime.
 
 ## Set The Race
 

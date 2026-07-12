@@ -19,6 +19,8 @@ find_package(libobs REQUIRED)
 target_sources(
   ${CMAKE_PROJECT_NAME}
   PRIVATE
+    src/backend-manager.cpp
+    src/backend-manager.hpp
     src/plugin-main.cpp
     src/race-source.cpp
     src/race-source.hpp
@@ -31,3 +33,39 @@ target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs gdiplus winhttp)
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
 
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE-OBS-PLUGIN" DESTINATION ${CMAKE_PROJECT_NAME})
+
+set(BUNDLED_NODE_EXECUTABLE "" CACHE FILEPATH "Node.js executable bundled with the Windows plugin")
+if(NOT BUNDLED_NODE_EXECUTABLE)
+  find_program(BUNDLED_NODE_EXECUTABLE NAMES node node.exe)
+endif()
+if(NOT BUNDLED_NODE_EXECUTABLE OR NOT EXISTS "${BUNDLED_NODE_EXECUTABLE}")
+  message(FATAL_ERROR "A Node.js executable is required to package the managed backend.")
+endif()
+
+set(NODE_LICENSE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/node/LICENSE")
+if(NOT EXISTS "${NODE_LICENSE_FILE}")
+  message(FATAL_ERROR "The bundled Node.js license file is missing.")
+endif()
+
+install(PROGRAMS "${BUNDLED_NODE_EXECUTABLE}" DESTINATION "${CMAKE_PROJECT_NAME}/data/runtime")
+install(FILES "${NODE_LICENSE_FILE}" DESTINATION "${CMAKE_PROJECT_NAME}/data/runtime")
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/server.js" DESTINATION "${CMAKE_PROJECT_NAME}/data/backend")
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/public/" DESTINATION "${CMAKE_PROJECT_NAME}/data/backend/public")
+
+add_custom_command(
+  TARGET ${CMAKE_PROJECT_NAME}
+  POST_BUILD
+  COMMAND "${CMAKE_COMMAND}" -E make_directory
+          "${CMAKE_CURRENT_BINARY_DIR}/rundir/$<CONFIG>/${CMAKE_PROJECT_NAME}/runtime"
+          "${CMAKE_CURRENT_BINARY_DIR}/rundir/$<CONFIG>/${CMAKE_PROJECT_NAME}/backend/public"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${BUNDLED_NODE_EXECUTABLE}"
+          "${CMAKE_CURRENT_BINARY_DIR}/rundir/$<CONFIG>/${CMAKE_PROJECT_NAME}/runtime/node.exe"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${NODE_LICENSE_FILE}"
+          "${CMAKE_CURRENT_BINARY_DIR}/rundir/$<CONFIG>/${CMAKE_PROJECT_NAME}/runtime/LICENSE"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/server.js"
+          "${CMAKE_CURRENT_BINARY_DIR}/rundir/$<CONFIG>/${CMAKE_PROJECT_NAME}/backend/server.js"
+  COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/public"
+          "${CMAKE_CURRENT_BINARY_DIR}/rundir/$<CONFIG>/${CMAKE_PROJECT_NAME}/backend/public"
+  COMMENT "Copy managed backend resources to rundir"
+  VERBATIM
+)

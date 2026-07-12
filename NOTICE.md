@@ -12,7 +12,9 @@ No therun.gg source code or private API is included in this repository. Users ar
 
 ## Node.js
 
-Node.js is required to run the local server, but it is not bundled in this repository. Node.js and its dependencies are distributed under their own licenses by the Node.js project.
+Native v3.2.3 release packages bundle the official Node.js 24.14.0 Windows x64 runtime so OBS can manage the local race backend without a separate BAT file. Node.js and its included dependencies are distributed under their own licenses by the Node.js project. The complete notices shipped with that runtime are included in source as `third_party/node/LICENSE` and installed as `therun-races-overlay/data/runtime/LICENSE`.
+
+The Browser Source fallback can instead use a separately installed Node.js runtime.
 
 ## OBS Studio
 

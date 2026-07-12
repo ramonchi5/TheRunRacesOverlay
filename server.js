@@ -4,10 +4,20 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
 
+function getArg(name, fallback) {
+  const index = process.argv.indexOf(name);
+  if (index >= 0 && process.argv[index + 1]) {
+    return process.argv[index + 1];
+  }
+  return fallback;
+}
+
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
-const STATE_FILE = path.join(ROOT, ".overlay-state.json");
-const APP_VERSION = "3.1.3";
+const STATE_FILE = path.resolve(
+  getArg("--state-file", process.env.THERUN_OVERLAY_STATE_FILE || path.join(ROOT, ".overlay-state.json"))
+);
+const APP_VERSION = "3.2.3";
 const DEFAULT_PORT = 5179;
 const CACHE_TTL_MS = 750;
 const ERROR_RETRY_MS = 3000;
@@ -31,14 +41,6 @@ const mimeTypes = {
   ".png": "image/png",
   ".ico": "image/x-icon",
 };
-
-function getArg(name, fallback) {
-  const index = process.argv.indexOf(name);
-  if (index >= 0 && process.argv[index + 1]) {
-    return process.argv[index + 1];
-  }
-  return fallback;
-}
 
 const port = Number(process.env.PORT || getArg("--port", DEFAULT_PORT));
 
@@ -68,6 +70,7 @@ function readState() {
 
 function writeState(state) {
   currentRace = state;
+  fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
   fs.writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 

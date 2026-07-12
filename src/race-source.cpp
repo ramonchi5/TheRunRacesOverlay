@@ -9,6 +9,7 @@ the Free Software Foundation; either version 2 of the License, or
 */
 
 #include "race-source.hpp"
+#include "backend-manager.hpp"
 
 #include <windows.h>
 #include <objidl.h>
@@ -49,6 +50,7 @@ namespace {
 constexpr const char *SOURCE_ID = "therun_race_leaderboard";
 
 constexpr const char *SETTING_BACKEND_URL = "backend_url";
+constexpr const char *SETTING_AUTO_BACKEND = "auto_backend";
 constexpr const char *SETTING_RACE_URL = "race_url";
 constexpr const char *SETTING_WIDTH = "output_width";
 constexpr const char *SETTING_ROW_HEIGHT = "row_height";
@@ -233,7 +235,7 @@ std::string http_get_json(const std::string &url)
 	if (path.empty())
 		path = L"/";
 
-	WinHttpHandle session(WinHttpOpen(L"TheRunRacesOverlay-OBS/3.1.3",
+	WinHttpHandle session(WinHttpOpen(L"TheRunRacesOverlay-OBS/3.2.3",
 					  WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME,
 					  WINHTTP_NO_PROXY_BYPASS, 0));
 	if (!session)
@@ -305,8 +307,17 @@ struct SourceSettings {
 	uint32_t shadow_opacity = 90;
 	uint32_t poll_interval = 1000;
 	float outline_size = 0.0f;
+	bool auto_backend = true;
 	bool show_title = true;
 };
+
+bool uses_managed_backend(const SourceSettings &settings)
+{
+	if (!settings.auto_backend)
+		return false;
+	const std::string url = lower_ascii(settings.backend_url);
+	return url == "http://127.0.0.1:5179" || url == "http://localhost:5179";
+}
 
 struct LatestSplit {
 	std::string name;
@@ -1131,6 +1142,7 @@ SourceSettings read_settings(obs_data_t *settings)
 		obs_data_get_int(settings, SETTING_POLL_INTERVAL), 250, 5000));
 	result.outline_size = static_cast<float>(clamp_value(
 		obs_data_get_double(settings, SETTING_OUTLINE_SIZE), 0.0, 10.0));
+	result.auto_backend = obs_data_get_bool(settings, SETTING_AUTO_BACKEND);
 	result.show_title = obs_data_get_bool(settings, SETTING_SHOW_TITLE);
 	return result;
 }
@@ -1139,14 +1151,17 @@ class RaceSource {
 public:
 	RaceSource(obs_data_t *settings, obs_source_t *source)
 	{
-		UNUSED_PARAMETER(source);
 		update(settings);
 		publish(render_message(settings_, "Connecting to TheRun..."));
+		showing_.store(obs_source_showing(source));
+		sync_backend_registration();
 		worker_ = std::thread([this] { worker_loop(); });
 	}
 
 	~RaceSource()
 	{
+		showing_.store(false);
+		sync_backend_registration();
 		stop_.store(true);
 		condition_.notify_all();
 		if (worker_.joinable())
@@ -1166,6 +1181,15 @@ public:
 			settings_ = next;
 			++settings_revision_;
 		}
+		sync_backend_registration();
+		condition_.notify_all();
+	}
+
+	void set_showing(bool showing)
+	{
+		if (showing_.exchange(showing) == showing)
+			return;
+		sync_backend_registration();
 		condition_.notify_all();
 	}
 
@@ -1227,6 +1251,12 @@ private:
 		std::string previous_race_id;
 
 		while (!stop_.load()) {
+			if (!showing_.load()) {
+				std::unique_lock lock(wait_mutex_);
+				condition_.wait(lock, [this] { return stop_.load() || showing_.load(); });
+				continue;
+			}
+
 			SourceSettings settings;
 			uint64_t revision = 0;
 			{
@@ -1236,6 +1266,8 @@ private:
 			}
 
 			try {
+				if (uses_managed_backend(settings))
+					BackendManager::instance().ensure_running();
 				std::string endpoint = settings.backend_url + "/api/race";
 				const std::string race_id = normalize_race_id(settings.race_url);
 				if (!race_id.empty())
@@ -1279,17 +1311,43 @@ private:
 				if (have_data && revision != observed_revision) {
 					publish(render_race(last_data, settings, {}));
 				} else if (!have_data) {
-					publish(render_message(settings, "Start the local backend, then refresh"));
+					const std::string backend_error = uses_managed_backend(settings)
+									  ? BackendManager::instance().last_error()
+									  : std::string{};
+					publish(render_message(settings, backend_error.empty()
+									 ? "Connecting to TheRun..."
+									 : backend_error));
 				}
 			}
 
 			observed_revision = revision;
 			refresh_requested_.store(false);
 			std::unique_lock lock(wait_mutex_);
-			condition_.wait_for(lock, std::chrono::milliseconds(settings.poll_interval), [this, revision] {
-				return stop_.load() || refresh_requested_.load() || settings_revision_.load() != revision;
-			});
+			condition_.wait_for(lock, std::chrono::milliseconds(settings.poll_interval),
+					    [this, revision] {
+						    return stop_.load() || !showing_.load() ||
+							   refresh_requested_.load() ||
+							   settings_revision_.load() != revision;
+					    });
 		}
+	}
+
+	void sync_backend_registration()
+	{
+		SourceSettings settings;
+		{
+			std::lock_guard lock(settings_mutex_);
+			settings = settings_;
+		}
+		const bool should_acquire = showing_.load() && uses_managed_backend(settings);
+		std::lock_guard lock(backend_mutex_);
+		if (should_acquire == backend_acquired_)
+			return;
+		if (should_acquire)
+			BackendManager::instance().acquire();
+		else
+			BackendManager::instance().release();
+		backend_acquired_ = should_acquire;
 	}
 
 	void publish(RenderFrame frame)
@@ -1302,6 +1360,7 @@ private:
 	}
 
 	std::atomic<bool> stop_{false};
+	std::atomic<bool> showing_{false};
 	std::atomic<bool> refresh_requested_{false};
 	std::atomic<uint32_t> output_width_{DEFAULT_WIDTH};
 	std::atomic<uint32_t> output_height_{180};
@@ -1312,6 +1371,8 @@ private:
 	std::mutex settings_mutex_;
 	SourceSettings settings_;
 	std::atomic<uint64_t> settings_revision_{0};
+	std::mutex backend_mutex_;
+	bool backend_acquired_ = false;
 
 	std::mutex frame_mutex_;
 	RenderFrame pending_frame_;
@@ -1330,6 +1391,7 @@ const char *source_name(void *)
 void source_defaults(obs_data_t *settings)
 {
 	obs_data_set_default_string(settings, SETTING_BACKEND_URL, "http://127.0.0.1:5179");
+	obs_data_set_default_bool(settings, SETTING_AUTO_BACKEND, true);
 	obs_data_set_default_string(settings, SETTING_RACE_URL, "");
 	obs_data_set_default_int(settings, SETTING_WIDTH, DEFAULT_WIDTH);
 	obs_data_set_default_int(settings, SETTING_ROW_HEIGHT, DEFAULT_ROW_HEIGHT);
@@ -1360,6 +1422,7 @@ obs_properties_t *source_properties(void *data)
 {
 	obs_properties_t *properties = obs_properties_create();
 	obs_properties_t *connection = obs_properties_create();
+	obs_properties_add_bool(connection, SETTING_AUTO_BACKEND, obs_module_text("AutoBackend"));
 	obs_properties_add_text(connection, SETTING_BACKEND_URL, obs_module_text("BackendUrl"),
 				OBS_TEXT_DEFAULT);
 	obs_properties_add_text(connection, SETTING_RACE_URL, obs_module_text("RaceUrl"), OBS_TEXT_DEFAULT);
@@ -1428,6 +1491,18 @@ void source_update(void *data, obs_data_t *settings)
 		static_cast<RaceSource *>(data)->update(settings);
 }
 
+void source_show(void *data)
+{
+	if (data)
+		static_cast<RaceSource *>(data)->set_showing(true);
+}
+
+void source_hide(void *data)
+{
+	if (data)
+		static_cast<RaceSource *>(data)->set_showing(false);
+}
+
 uint32_t source_width(void *data)
 {
 	return data ? static_cast<RaceSource *>(data)->width() : DEFAULT_WIDTH;
@@ -1456,6 +1531,8 @@ void register_therun_race_source()
 	info.create = source_create;
 	info.destroy = source_destroy;
 	info.update = source_update;
+	info.show = source_show;
+	info.hide = source_hide;
 	info.get_defaults = source_defaults;
 	info.get_properties = source_properties;
 	info.video_render = source_render;
