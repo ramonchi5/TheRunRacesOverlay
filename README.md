@@ -86,9 +86,22 @@ Nothing is configured to start with Windows. The managed backend exists only whi
 
 Do not install only the DLL. OBS also needs the plugin's `data/locale` files, so either use the installer or copy the entire `therun-races-overlay/` folder. The ProgramData location works independently of the normal OBS installation directory. Portable OBS installations must instead place the folder in their own configured plugin directory.
 
-The source properties provide controls for automatic backend management, a custom backend URL, output width, row height and gaps, title visibility and size, font family and scale, render quality, background opacity, gradient amount, shadow offset/blur/opacity, optional outline size, and polling interval. Render quality defaults to `200%` supersampling and can be reduced for very large leaderboards. Gradient amount ranges from `0` (solid semantic colors) to `100` (the full white/color/dark treatment). The outline defaults to `0`; ELO ratings use solid colors instead of gradients.
+The source properties provide controls for automatic backend management, a custom backend URL, output width, row height and gaps, title visibility and size, font family and scale, render quality, background opacity, gradient amount, shadow offset/blur/opacity, outline size, and polling interval.
 
-The supersampled texture improves diagonal and curved edges while OBS scales the source. The final stream still contains only the pixels available at the source's transformed canvas size, so very deep zooming will reveal those pixels. For the sharpest final result, avoid shrinking the source far below its configured **Output width**, and use OBS's Lanczos scale filter when substantial downscaling is necessary.
+New native sources use this tested starting profile:
+
+- Output width `750`, row height `110`, and row gap `3`.
+- Visible title at size `32`, Segoe UI, and `115%` text scale.
+- `100%` render quality.
+- Runner background opacity `20%` and position background opacity `75%`.
+- Gradient strength `100%`.
+- Shadow offset `4`, blur `2`, and opacity `100%`.
+- Outline size `2.00`.
+- Polling interval `1000 ms` and automatic bundled backend startup enabled.
+
+Gradient amount ranges from `0` (solid semantic colors) to `100` (the full white/color/dark treatment). Render quality remains adjustable from `100%` to `300%`, but `100%` is the intentional default for the tested visual style. ELO ratings use solid colors instead of gradients. Existing OBS sources retain their saved values; create a new source or change the controls manually to use this profile.
+
+Higher render-quality values provide additional source pixels for OBS scaling, but the final stream still contains only the pixels available at the source's transformed canvas size. The tested profile deliberately uses `100%`; raise it only when that looks better for a particular scene transform. Avoid shrinking the source far below its configured **Output width**, and use OBS's Lanczos scale filter when substantial downscaling is necessary.
 
 Implementation, build, and installation details are documented in [`OBS-PLUGIN.md`](OBS-PLUGIN.md).
 

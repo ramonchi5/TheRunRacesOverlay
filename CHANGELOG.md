@@ -8,14 +8,17 @@
 - Paused network polling while a source is not shown in OBS.
 - Preserved custom backend URLs and the Browser Source/manual-script workflow as optional alternatives.
 - Added Node.js redistribution notices and a `release/TheRunRacesOverlay-v3.2.3-OBS-Plugin-Windows-x64.zip` package without modifying previous releases.
+- Refreshed the unreleased package with the final v3.1.3 appearance defaults and clearer abandoned no-delta spacing.
 
 ## 3.1.3 - 2026-07-13
 
 - Matched the `LEADER` label size to race deltas and current times.
-- Added adjustable supersampled native rendering, defaulting to `200%`, while preserving existing source dimensions and scene transforms.
+- Added adjustable native render quality from `100%` to `300%` while preserving existing source dimensions and scene transforms.
 - Switched transparent text textures to a premultiplied-alpha path so OBS downscaling does not pull bright color from transparent pixels.
 - Extended gradient bounds beyond each glyph to remove the bright lower-edge artifact on titles and status labels.
 - Documented the unavoidable relationship between transformed canvas size and deep-zoom pixel visibility.
+- Adopted the tested native defaults: width `750`, row height `110`, title size `32`, text scale `115%`, render quality `100%`, background opacities `20/75`, full gradient, shadow `4/2/100`, and outline `2.00`.
+- Moved the abandoned runner's no-delta marker farther from their final time.
 - Added a `release/TheRunRacesOverlay-v3.1.3-OBS-Plugin-Windows-x64.zip` package without modifying previous releases.
 
 ## 3.0.3 - 2026-07-12

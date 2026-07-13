@@ -28,9 +28,11 @@ Temporary backend failures retain the last successful texture. The plugin never 
 - Gradient amount `0` uses solid semantic colors; higher values extend the light/dark transitions inward while preserving the semantic color at the center.
 - ELO ratings and rating changes use solid colors for small-text clarity.
 - Shadows are drawn as a separate multi-sample layer before the glyph fill.
-- Outlines are optional and disabled by default.
-- Render quality defaults to `200%`; premultiplied-alpha sampling prevents bright transparent-edge contamination during OBS scaling.
+- Outlines are adjustable and default to `2.00` in the tested appearance profile.
+- Render quality is adjustable from `100%` to `300%` and intentionally defaults to `100%`; premultiplied-alpha sampling prevents bright transparent-edge contamination during OBS scaling.
 - Equal outer gutters, row gaps, and all areas outside runner bands remain transparent.
+
+The remaining tested defaults are output width `750`, row height `110`, row gap `3`, title size `32`, Segoe UI at `115%`, runner background opacity `20%`, position background opacity `75%`, full gradient strength, and shadow offset/blur/opacity `4/2/100`.
 
 ## Build
 

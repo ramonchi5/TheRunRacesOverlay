@@ -70,9 +70,21 @@ constexpr const char *SETTING_SHADOW_OPACITY = "shadow_opacity";
 constexpr const char *SETTING_OUTLINE_SIZE = "outline_size";
 constexpr const char *SETTING_POLL_INTERVAL = "poll_interval";
 
-constexpr uint32_t DEFAULT_WIDTH = 900;
-constexpr uint32_t DEFAULT_ROW_HEIGHT = 112;
+constexpr uint32_t DEFAULT_WIDTH = 750;
+constexpr uint32_t DEFAULT_ROW_HEIGHT = 110;
 constexpr uint32_t DEFAULT_ROW_GAP = 3;
+
+constexpr uint32_t DEFAULT_TITLE_SIZE = 32;
+constexpr uint32_t DEFAULT_FONT_SCALE = 115;
+constexpr uint32_t DEFAULT_RENDER_SCALE = 100;
+constexpr uint32_t DEFAULT_BACKGROUND_OPACITY = 20;
+constexpr uint32_t DEFAULT_POSITION_OPACITY = 75;
+constexpr uint32_t DEFAULT_GRADIENT_STRENGTH = 100;
+constexpr uint32_t DEFAULT_SHADOW_OFFSET = 4;
+constexpr uint32_t DEFAULT_SHADOW_BLUR = 2;
+constexpr uint32_t DEFAULT_SHADOW_OPACITY = 100;
+constexpr float DEFAULT_OUTLINE_SIZE = 2.0f;
+constexpr uint32_t DEFAULT_POLL_INTERVAL = 1000;
 
 const Color COLOR_WHITE(255, 255, 255, 255);
 const Color COLOR_GRAY(255, 218, 222, 218);
@@ -296,17 +308,17 @@ struct SourceSettings {
 	uint32_t width = DEFAULT_WIDTH;
 	uint32_t row_height = DEFAULT_ROW_HEIGHT;
 	uint32_t row_gap = DEFAULT_ROW_GAP;
-	uint32_t title_size = 34;
-	uint32_t font_scale = 100;
-	uint32_t render_scale = 200;
-	uint32_t background_opacity = 70;
-	uint32_t position_opacity = 50;
-	uint32_t gradient_strength = 100;
-	uint32_t shadow_offset = 3;
-	uint32_t shadow_blur = 3;
-	uint32_t shadow_opacity = 90;
-	uint32_t poll_interval = 1000;
-	float outline_size = 0.0f;
+	uint32_t title_size = DEFAULT_TITLE_SIZE;
+	uint32_t font_scale = DEFAULT_FONT_SCALE;
+	uint32_t render_scale = DEFAULT_RENDER_SCALE;
+	uint32_t background_opacity = DEFAULT_BACKGROUND_OPACITY;
+	uint32_t position_opacity = DEFAULT_POSITION_OPACITY;
+	uint32_t gradient_strength = DEFAULT_GRADIENT_STRENGTH;
+	uint32_t shadow_offset = DEFAULT_SHADOW_OFFSET;
+	uint32_t shadow_blur = DEFAULT_SHADOW_BLUR;
+	uint32_t shadow_opacity = DEFAULT_SHADOW_OPACITY;
+	uint32_t poll_interval = DEFAULT_POLL_INTERVAL;
+	float outline_size = DEFAULT_OUTLINE_SIZE;
 	bool auto_backend = true;
 	bool show_title = true;
 };
@@ -1079,8 +1091,10 @@ RenderFrame render_race(const RaceData &race, const SourceSettings &settings,
 		float time_size = time_size_default;
 		float time_width = painter.measure_width(current_time, time_size, FontStyleBold);
 		float delta_width = painter.measure_width(delta_label, delta_size, FontStyleBold);
+		const float delta_time_gap = (runner.abandoned ? 36.0f : 18.0f) * scale;
 		const float stats_available = stats_right - stats_left;
-		while (time_size > 18.0f * scale && time_width + delta_width + 18.0f > stats_available) {
+		while (time_size > 18.0f * scale &&
+		       time_width + delta_width + delta_time_gap > stats_available) {
 			time_size -= 1.0f;
 			delta_size = std::min(delta_size, time_size);
 			time_width = painter.measure_width(current_time, time_size, FontStyleBold);
@@ -1090,7 +1104,7 @@ RenderFrame render_race(const RaceData &race, const SourceSettings &settings,
 		const float stats_y = row_top + (row_height - time_size) * 0.42f;
 		const float time_x = stats_right - time_width;
 		painter.draw(current_time, time_x, stats_y, time_size, FontStyleBold, current_color, true);
-		painter.draw(delta_label, time_x - 18.0f - delta_width,
+		painter.draw(delta_label, time_x - delta_time_gap - delta_width,
 			     row_top + (row_height - delta_size) * 0.42f, delta_size, FontStyleBold,
 			     delta_color, true);
 	}
@@ -1397,18 +1411,18 @@ void source_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, SETTING_ROW_HEIGHT, DEFAULT_ROW_HEIGHT);
 	obs_data_set_default_int(settings, SETTING_ROW_GAP, DEFAULT_ROW_GAP);
 	obs_data_set_default_bool(settings, SETTING_SHOW_TITLE, true);
-	obs_data_set_default_int(settings, SETTING_TITLE_SIZE, 34);
+	obs_data_set_default_int(settings, SETTING_TITLE_SIZE, DEFAULT_TITLE_SIZE);
 	obs_data_set_default_string(settings, SETTING_FONT_FACE, "Segoe UI");
-	obs_data_set_default_int(settings, SETTING_FONT_SCALE, 100);
-	obs_data_set_default_int(settings, SETTING_RENDER_SCALE, 200);
-	obs_data_set_default_int(settings, SETTING_BACKGROUND_OPACITY, 70);
-	obs_data_set_default_int(settings, SETTING_POSITION_OPACITY, 50);
-	obs_data_set_default_int(settings, SETTING_GRADIENT_STRENGTH, 100);
-	obs_data_set_default_int(settings, SETTING_SHADOW_OFFSET, 3);
-	obs_data_set_default_int(settings, SETTING_SHADOW_BLUR, 3);
-	obs_data_set_default_int(settings, SETTING_SHADOW_OPACITY, 90);
-	obs_data_set_default_double(settings, SETTING_OUTLINE_SIZE, 0.0);
-	obs_data_set_default_int(settings, SETTING_POLL_INTERVAL, 1000);
+	obs_data_set_default_int(settings, SETTING_FONT_SCALE, DEFAULT_FONT_SCALE);
+	obs_data_set_default_int(settings, SETTING_RENDER_SCALE, DEFAULT_RENDER_SCALE);
+	obs_data_set_default_int(settings, SETTING_BACKGROUND_OPACITY, DEFAULT_BACKGROUND_OPACITY);
+	obs_data_set_default_int(settings, SETTING_POSITION_OPACITY, DEFAULT_POSITION_OPACITY);
+	obs_data_set_default_int(settings, SETTING_GRADIENT_STRENGTH, DEFAULT_GRADIENT_STRENGTH);
+	obs_data_set_default_int(settings, SETTING_SHADOW_OFFSET, DEFAULT_SHADOW_OFFSET);
+	obs_data_set_default_int(settings, SETTING_SHADOW_BLUR, DEFAULT_SHADOW_BLUR);
+	obs_data_set_default_int(settings, SETTING_SHADOW_OPACITY, DEFAULT_SHADOW_OPACITY);
+	obs_data_set_default_double(settings, SETTING_OUTLINE_SIZE, DEFAULT_OUTLINE_SIZE);
+	obs_data_set_default_int(settings, SETTING_POLL_INTERVAL, DEFAULT_POLL_INTERVAL);
 }
 
 bool refresh_clicked(obs_properties_t *, obs_property_t *, void *data)
