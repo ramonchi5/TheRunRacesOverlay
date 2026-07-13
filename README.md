@@ -62,6 +62,8 @@ start-overlay.ps1
 
 ## Native OBS Source
 
+### Standard OBS Installation
+
 Extract the v3 release anywhere on the PC and double-click:
 
 ```text
@@ -84,7 +86,30 @@ Paste a full TheRun race URL or race ID directly into the source properties. An 
 
 Nothing is configured to start with Windows. The managed backend exists only while OBS is running and at least one native leaderboard source is visible.
 
-Do not install only the DLL. OBS also needs the plugin's `data/locale` files, so either use the installer or copy the entire `therun-races-overlay/` folder. The ProgramData location works independently of the normal OBS installation directory. Portable OBS installations must instead place the folder in their own configured plugin directory.
+For a normal installed copy of OBS, its installation drive or folder does not usually matter because the installer uses OBS's recommended global Windows plugin location under `ProgramData`.
+
+### Custom or Portable OBS Installation
+
+The included installer always targets `C:\ProgramData\obs-studio\plugins`. OBS installations that use portable mode do not use that global directory, and some custom installations may require their own plugin directory. In that case:
+
+1. Close OBS.
+2. Find the custom or portable OBS root folder. This is the folder containing OBS's `bin`, `data`, and `obs-plugins` directories.
+3. Create `<OBS folder>\data\plugins` if it does not already exist.
+4. Copy the complete `therun-races-overlay` folder from the extracted release into `<OBS folder>\data\plugins`.
+5. Restart that copy of OBS and add **TheRun Race Leaderboard** from the Sources menu.
+
+The resulting layout must remain:
+
+```text
+<OBS folder>\data\plugins\therun-races-overlay\
+|-- bin\64bit\therun-races-overlay.dll
+`-- data\
+    |-- locale\
+    |-- backend\
+    `-- runtime\
+```
+
+Do not copy only the DLL. OBS needs the complete folder because the v3.2.3 source also loads its locale files, bundled backend, and Node.js runtime from `data`. See the official [OBS Plugins Guide](https://obsproject.com/kb/plugins-guide) for custom plugin paths.
 
 The source properties provide controls for automatic backend management, a custom backend URL, output width, row height and gaps, title visibility and size, font family and scale, render quality, background opacity, gradient amount, shadow offset/blur/opacity, outline size, and polling interval.
 

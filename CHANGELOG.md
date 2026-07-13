@@ -9,6 +9,7 @@
 - Preserved custom backend URLs and the Browser Source/manual-script workflow as optional alternatives.
 - Added Node.js redistribution notices and a `release/TheRunRacesOverlay-v3.2.3-OBS-Plugin-Windows-x64.zip` package without modifying previous releases.
 - Refreshed the unreleased package with the final v3.1.3 appearance defaults and clearer abandoned no-delta spacing.
+- Documented manual installation for custom-location and portable OBS setups.
 
 ## 3.1.3 - 2026-07-13
 
